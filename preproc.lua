@@ -130,7 +130,6 @@ print('found macro', key)
 					end
 					i = i + 1
 				end
-				i = i + 1
 			elseif ch == ',' then
 				if parcount == 0 then
 					local paramvalue = paramStr:sub(last, i-1)
@@ -149,7 +148,7 @@ print('found macro', key)
 print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
 	paramMap[macrokey] = paramvalue
 	
-	assert(paramIndex == #vparams, "macro expected "..#vparams.."  but found "..paramIndex)
+	assert(paramIndex == #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
 
 	return j, k, paramMap
 end

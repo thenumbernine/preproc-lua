@@ -37,7 +37,7 @@ local function removeCommentsAndApplyContinuations(code)
 		local i = code:find('//',1,true)
 		if not i then break end
 		local j = code:find('\n',i+2,true) or #code
-		code = code:sub(1,i-1)..code:sub(j+1)
+		code = code:sub(1,i-1)..code:sub(j)
 	until false
 	
 	return code
@@ -97,7 +97,11 @@ function Preproc:searchForInclude(fn)
 	end
 end
 
-function Preproc:replaceMacros(l, macros)
+--[[
+argsonly = set to true to only expand macros that have arguments
+useful for if evaluation
+--]]
+function Preproc:replaceMacros(l, macros, argsonly)
 	macros = macros or self.macros
 	local found
 	repeat
@@ -144,9 +148,10 @@ function Preproc:replaceMacros(l, macros)
 						local def = self:replaceMacros(v.def, paramMap)
 
 						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
+						found = true
 					end
 				end
-			else
+			elseif not argsonly then
 				local j,k = l:find(key)
 				if j then 
 print('found macro '..key)
@@ -171,6 +176,302 @@ print('replacing', key, v)
 		end
 	until not found
 	return l
+end
+
+local function castnumber(x)
+	if x == nil then return 0 end
+	if x == false then return 0 end
+	if x == true then return 1 end
+	return (assert(tonumber(x), "couldn't cast to number: "..x))
+end
+
+-- now to evalute the tree
+function Preproc:processExprAST(t)
+	if t[1] == 'defined' then
+		return self.macros[t[2]] and 1 or 0
+	elseif t[1] == 'macro' then
+		local v = self.macros[t[2]]
+		if v then
+			v = self:replaceMacros(v)
+			v = tonumber(v) or v
+		end
+		-- should this always evaluate to a number?
+print('replacing', t[2],' with ',v)				
+		return castnumber(v)
+	elseif t[1] == 'number' then
+		return assert(tonumber(t[2]), "failed to parse number "..tostring(t[2]))
+	elseif t[1] == '!' then
+		return castnumber(self:processExprAST(t[2])) == 0 and 1 or 0
+	elseif t[1] == '&&' then
+		if castnumber(self:processExprAST(t[2])) ~= 0
+		and castnumber(self:processExprAST(t[3])) ~= 0
+		then 
+			return 1 
+		end
+		return 0
+	elseif t[1] == '||' then
+		if self:processExprAST(t[2]) ~= 0
+		or self:processExprAST(t[3]) ~= 0
+		then 
+			return 1 
+		end
+		return 0
+	elseif t[1] == '&' then
+		return bit.band(
+			castnumber(self:processExprAST(t[2])),
+			castnumber(self:processExprAST(t[3]))
+		)
+	elseif t[1] == '|' then
+		return bit.bor(
+			castnumber(self:processExprAST(t[2])),
+			castnumber(self:processExprAST(t[3]))
+		)
+	elseif t[1] == '==' then
+		return (castnumber(self:processExprAST(t[2])) == castnumber(self:processExprAST(t[3]))) and 1 or 0
+	elseif t[1] == '>=' then
+		return (castnumber(self:processExprAST(t[2])) >= castnumber(self:processExprAST(t[3]))) and 1 or 0
+	elseif t[1] == '<=' then
+		return (castnumber(self:processExprAST(t[2])) <= castnumber(self:processExprAST(t[3]))) and 1 or 0
+	elseif t[1] == '!=' then
+		return (castnumber(self:processExprAST(t[2])) ~= castnumber(self:processExprAST(t[3]))) and 1 or 0
+	elseif t[1] == '>' then
+		return (castnumber(self:processExprAST(t[2])) > castnumber(self:processExprAST(t[3]))) and 1 or 0
+	elseif t[1] == '<' then
+		return (castnumber(self:processExprAST(t[2])) < castnumber(self:processExprAST(t[3]))) and 1 or 0
+	else
+		error("don't know how to handle this ast entry "..t[1])
+	end
+end
+
+
+
+function Preproc:parseCondInt(expr)
+	local expr = expr
+assert(expr)
+print('evaluating condition:', expr)
+	
+	-- does defined() work with macros with args?
+	-- if not then substitute macros with args here
+	-- if so then substitute it in the eval of macros later ...
+expr = self:replaceMacros(expr, nil, true)
+print('after macros:', expr)
+
+	local col = 1
+	local cond
+	local rethrow
+	xpcall(function()
+		local function readnext(pat)
+			local res = expr:sub(col):match('^'..pat)
+			if res then 
+				col = col + #res
+				return res 
+			end
+		end
+
+		local function skipwhitespace()
+			readnext'%s*'
+		end
+
+		local namepat = '[_%a][_%w]*'
+		local decpat = '%d+[Ll]?'
+		local hexpat = '0x%x+'
+
+		local prev, cur
+		local function next()
+			skipwhitespace()
+			if col > #expr then 
+print('done')				
+				cur = ''
+				return cur
+			end
+
+			for _,pat in ipairs{
+				namepat,
+				hexpat,
+				decpat,
+				'&&',
+				'||',
+				'==',
+				'>=',
+				'<=',
+				'!=',
+				'>',
+				'<',
+				'!',
+				'&',
+				'|',
+				'%(',
+				'%)',
+				',',
+			} do
+				local symbol = readnext(pat)
+				if symbol then 
+					cur = symbol
+print('cur', cur)					
+					return symbol 
+				end
+			end	
+
+			error("couldn't understand token here: "..expr:substr(cur))
+		end
+
+		next()
+
+		local function canbe(pat)
+			if cur:match('^'..pat..'$') then 
+				prev = cur
+				next()
+				return prev
+			end
+		end
+
+		local function mustbe(pat)
+			if not canbe(pat) then error("expected "..pat.." found "..prev) end
+			return prev
+		end
+
+		local level1
+
+		local function level4()
+			if canbe'defined' then
+				if canbe'%(' then
+					local name = mustbe(namepat)
+					mustbe'%)'
+					local result = {'defined', name}
+print('got', tolua(result))
+					return result
+				else
+					local name = mustbe(namepat)
+					local result = {'defined', name}
+print('got', tolua(result))
+					return result
+				end
+			elseif canbe'!' then
+				local a = level1()
+				local result = {'!', a}
+print('got', tolua(result))
+				return result
+			elseif canbe(namepat) then
+				local name = assert(prev)
+				if canbe'%(' then
+					-- read until balanced closing ) ...
+
+					local args = table()
+					if not canbe'%)' then
+						args:insert(level1())
+						while canbe',' do
+							args:insert(level1())
+						end
+						mustbe'%)'
+					end
+					local str = name..'('..args:mapi(function(arg)
+						return self:processExprAST(arg)
+					end):concat','..')'
+					assert(str)
+					local result = {'number', self:parseCondInt(str)}
+print('got', tolua(result))
+					return result
+				else
+					assert(name)
+					local def = self.macros[name]
+					if def then 
+print('parsing', def)					
+						def = self:parseCondInt(def) 
+print('parsed', tolua(def))					
+					end
+					local result = {'number', castnumber(def)}
+print('got', tolua(result))
+					return result
+				end
+			elseif canbe(decpat) or canbe(hexpat) then
+				local dec = prev:match'(%d+)[Ll]?'
+				local val
+				if dec then
+					val = assert(tonumber(dec), "expected number")	-- decimal number
+				else
+					val = assert(tonumber(prev), "expected number")	-- hex number
+				end
+				assert(val)
+				local result = {'number', val}
+print('got', tolua(result))
+				return result
+			elseif canbe'%(' then
+				local node = level1()
+				mustbe'%)'
+print('got', tolua(result))				
+				return node
+			else
+				error("failed to parse expression: "..cur)
+			end
+		end
+
+		local function level3()
+			local a = level4()
+			if canbe'==' 
+			or canbe'!='
+			or canbe'>='
+			or canbe'<='
+			or canbe'>'
+			or canbe'<'
+			then
+				local op = prev
+				local b = level3()
+				local result = {op, a, b}
+print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+
+		local function level2()
+			local a = level3()
+			if canbe'||' 
+			or canbe'&&' 	
+			then
+				local op = prev
+				local b = level2()
+				local result = {op, a, b}
+print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+
+		level1 = function()
+			local a = level2()
+			if canbe'|' 
+			or canbe'&' 	
+			then
+				local op = prev
+				local b = level1()
+				local result = {op, a, b}
+print('got', tolua(result))				
+				return result
+			end
+			return a	
+		end
+
+		local parse = level1()
+
+print('got expression tree', tolua(parse))
+
+		mustbe''
+
+		cond = self:processExprAST(parse)
+print('got cond', cond)
+
+	end, function(err)
+		rethrow = 
+			' at col '..col..'\n'
+			..err..'\n'..debug.traceback()
+	end)
+	if rethrow then error(rethrow) end
+	
+	return cond
+end
+
+function Preproc:parseCondExpr(expr)
+	return self:parseCondInt(expr) ~= 0
 end
 
 function Preproc:__call(args)
@@ -237,7 +538,7 @@ print('cmd is', cmd, 'rest is', rest)
 						local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
 						if k then
 							assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
-print('defining',k,v)
+print('defining with params',k,params,paramdef)
 							
 -- [[ what if we're defining a macro with args?
 -- at this point I probably need to use a parser on #if evaluations			
@@ -256,7 +557,7 @@ print('defining',k,v)
 							local k, v = rest:match'^(%S+)%s+(.-)$'
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
-print('defining',k,v)
+print('defining value',k,v)
 								self.macros[k] = v
 							else
 								local k = rest
@@ -264,7 +565,7 @@ print('defining',k,v)
 								assert(k ~= '', "couldn't find what you were defining: "..l)
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 								
-print('defining',k,v)
+print('defining empty',k,v)
 								self.macros[k] = v
 							end
 						end
@@ -290,48 +591,8 @@ print('line is', l)
 						closeIf()
 					end
 
-print('evaluating condition:', rest)
-					local condcode = self:replaceMacros(rest)
-print('after macro replace:', condcode)
-
-					-- just lua it
-					local luacondcode = 'return '
-						..condcode
-							:gsub('&&', ' and ')
-							:gsub('||', ' or ')
-							:gsub('!=', '~=')
-							:gsub('!', ' not ')
-							:gsub('(%d+)L?', '%1')
-print('as lua cond code', luacondcode)						
-					local condenv = setmetatable({
-						defined = function(k)
-							local v = self.macros[k]
-							if type(v) == 'string' then 
-								return v
-							-- if it is a macro with args
-							elseif type(v) == 'table' then
-								return function(...)
-									local repl = v.def
-									for i,param in ipairs(v.params) do
-										repl = repl:gsub(param, select(i, ...))
-									end
-									return repl
-								end
-							end
-						end,
-					},{
-						__index = function(t,k)
-							-- lua will auto convert strings of numbers to the number values when comparing
-							-- but what about empty macros? 
-							-- in those cases, when performing binary operations, C preproc will replace the macro value with zero
-							-- ... so how do I do that ... 
-							-- I could return an object wrapping the value
-							-- but how would and or not work with wrappers, esp with luajit that doesn't allow metamethods of these? actually neither does lua 5.4 -- only bitwise overloads.
-							-- I might actually have to parse this for it to work correclty.
-							return self.macros[k]
-						end,
-					})
-					local cond = assert(load(luacondcode, nil, nil, condenv))() or false
+					local cond = self:parseCondExpr(rest)
+					assert(cond ~= nil, "cond must be true or false")
 print('got cond', cond)
 					ifstack:insert(cond)
 					
@@ -354,7 +615,7 @@ print('got cond', cond)
 					i = i - 1				
 				elseif cmd == 'ifndef' then
 print('ifndef looking for', rest)						
-					assert(isvalidsymbol(rest))
+					assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
 					local cond = not self.macros[rest]						
 print('got cond', cond)						
 					ifstack:insert(cond)
@@ -449,6 +710,7 @@ print('line is', l)
 			print(' at '..inc)
 		end
 		print('at line: '..i)
+		--print('macros: '..tolua(self.macros))
 		print(err..'\n'..debug.traceback())
 		os.exit(1)
 	end)

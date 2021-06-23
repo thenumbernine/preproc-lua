@@ -3,7 +3,6 @@ local file = require 'ext.file'
 
 local preproc = require 'preproc'()
 
-
 -- I guess pick these to match the compiler used to build luajit
 -- TODO this could work if my macro evaluator could handle undef'd comparisons <=> replace with zero
 preproc:setMacros{

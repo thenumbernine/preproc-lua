@@ -367,7 +367,7 @@ print('cur', cur)
 
 		local function level4()
 			if canbe'!' then
-				local a = level1()
+				local a = level4()
 				local result = {'!', a}
 print('got', tolua(result))
 				return result

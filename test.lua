@@ -6,8 +6,10 @@ local preproc = require 'preproc'()
 -- I guess pick these to match the compiler used to build luajit
 -- TODO this could work if my macro evaluator could handle undef'd comparisons <=> replace with zero
 preproc:setMacros{
-	__STDC_VERSION__ = '201710L',	-- c++17
-	__STDCPP_THREADS__ = '0',
+	-- don't define this or khrplatform explodes with stdint.h stuff
+	--__STDC_VERSION__ = '201710L',	-- c++17
+	--__STDCPP_THREADS__ = '0',
+	
 	_MSC_VER = '1929',
 	_MSC_FULL_VER = '192930038',
 	_MSVC_LANG = '201402',
@@ -25,13 +27,13 @@ preproc:setMacros{
 	_WIN64 = '1',
 }
 
--- [[ does this just setup the preproc state?
+--[[ does this just setup the preproc state?
 -- or is there typedef stuff in here too?
 -- if so then feed it to ffi
 -- it gets into varargs and stringizing ...
 preproc'#include <windows.h>'
 --]]
---[[
+-- [[
 preproc:setMacros{
 	-- these are used in gl.h, but where are they defined? probably windows.h
 	WINGDIAPI = '',
@@ -39,21 +41,16 @@ preproc:setMacros{
 }
 --]]
 
-local code = preproc'#include <GL/gl.h>'
-file['gl.h'] = code
-ffi.cdef(code)
-
+-- where I keep my glext.h and khr/khrplatform.h
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include')
 
-local code = preproc'#include <KHR/khrplatform.h>'
-file['khrplatform.h'] = code
-ffi.cdef(code)
-
--- [[
 preproc:setMacros{
 	GL_GLEXT_PROTOTYPES = '',
 }
-local code = preproc'#include <GL/glext.h>'
-file['glext.h'] = code
-ffi.cdef(code)
---]]
+
+local gl = preproc[[
+#include <GL/gl.h>
+#include <GL/glext.h>
+]]
+file['gl.h'] = gl
+ffi.cdef(gl)

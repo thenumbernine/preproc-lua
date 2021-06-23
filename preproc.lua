@@ -241,18 +241,7 @@ end
 
 -- now to evalute the tree
 function Preproc:evalAST(t)
-	if t[1] == 'defined' then
-		return self.macros[t[2]] and 1 or 0
-	elseif t[1] == 'macro' then
-		local v = self.macros[t[2]]
-		if v then
-			v = self:replaceMacros(v)
-			v = tonumber(v) or v
-		end
-		-- should this always evaluate to a number?
---print('replacing', t[2],' with ',v)				
-		return castnumber(v)
-	elseif t[1] == 'number' then
+	if t[1] == 'number' then
 		return assert(tonumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
 		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
@@ -522,7 +511,6 @@ function Preproc:__call(args)
 	xpcall(function()
 		while i <= #lines do
 			local l = lines[i]
-
 			local popInc = l:match'^/%* END (.*) %*/$'
 			if popInc then
 				local last = self.includeStack:remove()
@@ -555,7 +543,6 @@ function Preproc:__call(args)
 
 				if cmd == 'define' then
 					if eval then
-						
 						local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
 						if k then
 							assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
@@ -582,6 +569,7 @@ function Preproc:__call(args)
 						else
 						
 							local k, v = rest:match'^(%S+)%s+(.-)$'
+							local oldv = self.macros[k]
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --print('defining value',k,v)
@@ -600,8 +588,8 @@ function Preproc:__call(args)
 							local isnumber = tonumber(v)	-- TODO also check valid suffixes?
 							if isnumber then
 --print('line was', l)
-								if self.macros[k] then
-									if self.macros[k] ~= v then
+								if oldv then
+									if oldv ~= v then
 										print('warning: redefining '..k)
 									end
 									lines:remove(i)
@@ -621,8 +609,10 @@ function Preproc:__call(args)
 								l = "// couldn't convert "..l
 								lines[i] = l
 								--]]
+								-- [[
 								lines:remove(i)
 								i = i - 1
+								--]]
 							end
 						end
 					else

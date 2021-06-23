@@ -107,15 +107,18 @@ local function handleMacroWithArgs(l, macros, key, vparams)
 	local before = l:sub(j-1,j-1)
 	if before:match'[_a-zA-Z0-9]' then return end
 
---print('found macro', key)
+print('found macro', key)
+print('replacing from params '..tolua(vparams))	
+	
 	local paramStr = l:sub(j,k):match(pat)
 	paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
+print('found paramStr', paramStr)	
 	-- so now split by commas, but ignore commas that are out of balance with parenthesis
-	local parcount = 0
 	local paramIndex = 0
-	local last = 1
 	local paramMap = {}
-	do
+	if not paramStr:match'^%s*$' then
+		local parcount = 0
+		local last = 1
 		local i = 1
 		while i <= #paramStr do
 			local ch = paramStr:sub(i,i)
@@ -142,13 +145,13 @@ local function handleMacroWithArgs(l, macros, key, vparams)
 			end
 			i = i + 1
 		end
+		assert(parcount == 0, "macro mismatched ()'s")
+		local paramvalue = paramStr:sub(last)
+		paramIndex = paramIndex + 1
+		local macrokey = vparams[paramIndex]
+print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
+		paramMap[macrokey] = paramvalue
 	end
-	assert(parcount == 0, "macro mismatched ()'s")
-	local paramvalue = paramStr:sub(last)
-	paramIndex = paramIndex + 1
-	local macrokey = vparams[paramIndex]
---print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
-	paramMap[macrokey] = paramvalue
 	
 	assert(paramIndex == #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
 
@@ -188,9 +191,13 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 				if type(v) == 'table' then
 					local j, k, paramMap = handleMacroWithArgs(l, macros, key, v.params)
 					if j then
---print('replacing with params', tolua(v))
+print('replacing with params', tolua(v))
 						-- now replace all of v.params strings with params
 						local def = self:replaceMacros(v.def, paramMap, alsoDefined)
+-- TODO space or nospace?
+-- nospace = good for ## operator
+-- space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
+def = def:gsub('##', '')						
 						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
 						found = true
 						break
@@ -206,15 +213,14 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 						if not before:match'[_a-zA-Z0-9]'
 						and not after:match'[_a-zA-Z0-9]'
 						then
---print('found macro', key)
---print('replacing with', v)
+print('found macro', key)
+print('replacing with', v)
 							
 							-- if the macro has params then expect a parenthesis after k
 							-- and replace all the instances of v's params in v'def with the values in those parenthesis
 
 							-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
-
-							l = l:sub(1,j-1) .. ' ' .. v .. ' ' .. l:sub(k+1)
+							l = l:sub(1,j-1) .. v .. l:sub(k+1)
 							found = true
 							break
 						end
@@ -244,7 +250,7 @@ function Preproc:evalAST(t)
 			v = tonumber(v) or v
 		end
 		-- should this always evaluate to a number?
---print('replacing', t[2],' with ',v)				
+print('replacing', t[2],' with ',v)				
 		return castnumber(v)
 	elseif t[1] == 'number' then
 		return assert(tonumber(t[2]), "failed to parse number "..tostring(t[2]))
@@ -296,13 +302,13 @@ end
 function Preproc:parseCondInt(expr)
 	local expr = expr
 assert(expr)
---print('evaluating condition:', expr)
+print('evaluating condition:', expr)
 	
 	-- does defined() work with macros with args?
 	-- if not then substitute macros with args here
 	-- if so then substitute it in the eval of macros later ...
 expr = self:replaceMacros(expr, nil, true)
---print('after macros:', expr)
+print('after macros:', expr)
 
 	local col = 1
 	local cond
@@ -327,7 +333,7 @@ expr = self:replaceMacros(expr, nil, true)
 		local function next()
 			skipwhitespace()
 			if col > #expr then 
---print('done')				
+print('done')				
 				cur = ''
 				return cur
 			end
@@ -354,12 +360,12 @@ expr = self:replaceMacros(expr, nil, true)
 				local symbol = readnext(pat)
 				if symbol then 
 					cur = symbol
---print('cur', cur)					
+print('cur', cur)					
 					return symbol 
 				end
 			end	
 
-			error("couldn't understand token here: "..expr:substr(cur))
+			error("couldn't understand token here: "..expr:sub(cur))
 		end
 
 		next()
@@ -384,7 +390,7 @@ expr = self:replaceMacros(expr, nil, true)
 			if canbe'!' then
 				local a = level4()
 				local result = {'!', a}
---print('got', tolua(result))
+print('got', tolua(result))
 				return result
 			elseif canbe(decpat) or canbe(hexpat) then
 				local dec = prev:match'(%d+)[Ll]?'
@@ -396,23 +402,23 @@ expr = self:replaceMacros(expr, nil, true)
 				end
 				assert(val)
 				local result = {'number', val}
---print('got', tolua(result))
+print('got', tolua(result))
 				return result
 			elseif canbe'%(' then
 				local node = level1()
 				mustbe'%)'
---print('got', tolua(result))				
+print('got', tolua(result))				
 				return node
 			
 			-- have to handle 'defined' without () because it takes an implicit 1st arg
 			elseif canbe'defined' then
 				local name = mustbe(namepat)
 				local result = {'number', castnumber(self.macros[namepat])}
---print('got', tolua(result))
+print('got', tolua(result))
 				return result
 			elseif canbe(namepat) then
 				local result = {'number', 0}
---print('got', tolua(result))
+print('got', tolua(result))
 				return result
 			else
 				error("failed to parse expression: "..cur)
@@ -431,7 +437,7 @@ expr = self:replaceMacros(expr, nil, true)
 				local op = prev
 				local b = level3()
 				local result = {op, a, b}
---print('got', tolua(result))				
+print('got', tolua(result))				
 				return result
 			end
 			return a
@@ -445,7 +451,7 @@ expr = self:replaceMacros(expr, nil, true)
 				local op = prev
 				local b = level2()
 				local result = {op, a, b}
---print('got', tolua(result))				
+print('got', tolua(result))				
 				return result
 			end
 			return a
@@ -459,7 +465,7 @@ expr = self:replaceMacros(expr, nil, true)
 				local op = prev
 				local b = level1()
 				local result = {op, a, b}
---print('got', tolua(result))				
+print('got', tolua(result))				
 				return result
 			end
 			return a	
@@ -467,12 +473,12 @@ expr = self:replaceMacros(expr, nil, true)
 
 		local parse = level1()
 
---print('got expression tree', tolua(parse))
+print('got expression tree', tolua(parse))
 
 		mustbe''
 
 		cond = self:evalAST(parse)
---print('got cond', cond)
+print('got cond', cond)
 
 	end, function(err)
 		rethrow = 
@@ -535,12 +541,12 @@ function Preproc:__call(args)
 					end
 				end
 			end
---print('eval is', eval, 'line is', l)
+print('eval is', eval, 'line is', l)
 
 			l = string.trim(l)	-- trailing space doesn't matter, right?
 			if l:sub(1,1) == '#' then
 				local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
---print('cmd is', cmd, 'rest is', rest)				
+print('cmd is', cmd, 'rest is', rest)				
 				
 				local function closeIf()
 					assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
@@ -553,14 +559,17 @@ function Preproc:__call(args)
 						local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
 						if k then
 							assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---print('defining with params',k,params,paramdef)
+print('defining with params',k,params,paramdef)
 							
 -- [[ what if we're defining a macro with args?
 -- at this point I probably need to use a parser on #if evaluations			
-
-							params = string.split(params, ','):mapi(string.trim)
+							local paramstr = params
+							params = 
+								paramstr:match'^%s*$' 
+								and table()
+								or string.split(paramstr, ','):mapi(string.trim)
 							for i,param in ipairs(params) do
-								assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name")
+								assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name: "..tostring(param))
 							end
 						
 							self.macros[k] = {
@@ -575,7 +584,7 @@ function Preproc:__call(args)
 							local k, v = rest:match'^(%S+)%s+(.-)$'
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---print('defining value',k,v)
+print('defining value',k,v)
 								self.macros[k] = v
 							else
 								local k = rest
@@ -583,14 +592,14 @@ function Preproc:__call(args)
 								assert(k ~= '', "couldn't find what you were defining: "..l)
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 								
---print('defining empty',k,v)
+print('defining empty',k,v)
 								self.macros[k] = v
 							end
 						
 							--if it is a number define
 							local isnumber = tonumber(v)	-- TODO also check valid suffixes?
 							if isnumber then
---print('line was', l)
+print('line was', l)
 								if self.macros[k] then
 									if self.macros[k] ~= v then
 										print('warning: redefining '..k)
@@ -601,7 +610,7 @@ function Preproc:__call(args)
 									l = 'enum { '..k..' = '..v..' };'
 									lines[i] = l
 								end
---print('line is', l)
+print('line is', l)
 							else
 								-- macros don't get eval'd until they are used
 								-- but to replace them with enums maens evaluating them immediately
@@ -639,7 +648,7 @@ function Preproc:__call(args)
 						cond = self:parseCondExpr(rest)
 						assert(cond ~= nil, "cond must be true or false")
 					end
---print('got cond', cond)
+print('got cond', cond)
 					ifstack:insert{cond, hasprocessed}
 					
 					lines:remove(i)
@@ -652,19 +661,19 @@ function Preproc:__call(args)
 					lines:remove(i)
 					i = i - 1				
 				elseif cmd == 'ifdef' then
---print('ifdef looking for '..rest)
+print('ifdef looking for '..rest)
 					assert(isvalidsymbol(rest))
 					local cond = not not self.macros[rest]
---print('got cond', cond)						
+print('got cond', cond)						
 					ifstack:insert{cond, false}
 					
 					lines:remove(i)
 					i = i - 1			
 				elseif cmd == 'ifndef' then
---print('ifndef looking for', rest)						
+print('ifndef looking for', rest)						
 					assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
 					local cond = not self.macros[rest]						
---print('got cond', cond)						
+print('got cond', cond)						
 					ifstack:insert{cond, false}
 					
 					lines:remove(i)
@@ -743,9 +752,9 @@ function Preproc:__call(args)
 				else
 					local nl = self:replaceMacros(l)
 					if l ~= nl then
---print('line was', l)
+print('line was', l)
 						lines[i] = nl
---print('line is', l)							
+print('line is', l)							
 					end
 				end
 			end

@@ -46,6 +46,47 @@ end
 
 local Preproc = class()
 
+--[[
+Preproc(code)
+Preproc(args)
+args = table of:
+	code = code to use
+	includeDirs = include directories to use
+	macros = macros to use
+--]]
+function Preproc:init(args)
+	if args ~= nil then
+		self(args)
+	end
+	self.macros = {}
+	self.alreadyIncludedFiles = {}
+
+	self.includeDirs = table()
+
+	local incenv = os.getenv'INCLUDE'
+	if incenv then
+		self:addIncludeDirs(string.split(incenv, ';'))
+	end
+end
+
+function Preproc:setMacros(args)
+	for k,v in pairs(args) do
+		self.macros[k] = v
+	end
+end
+
+function Preproc:addIncludeDir(dir)
+	-- should I fix paths of the user-provided includeDirs? or just INCLUDE?
+	dir = dir:gsub('\\', '/')
+	self.includeDirs:insert(dir)
+end
+
+function Preproc:addIncludeDirs(dirs)
+	for _,dir in ipairs(dirs) do
+		self:addIncludeDir(dir)
+	end
+end
+
 function Preproc:searchForInclude(fn)
 	for _,d in ipairs(self.includeDirs) do
 		local p = d..'/'..fn
@@ -132,22 +173,6 @@ print('replacing', key, v)
 	return l
 end
 
---[[
-Preproc(code)
-Preproc(args)
-args = table of:
-	code = code to use
-	includeDirs = include directories to use
-	macros = macros to use
---]]
-function Preproc:init(args)
-	if args ~= nil then
-		self(args)
-	end
-	self.macros = {}
-	self.alreadyIncludedFiles = {}
-end
-
 function Preproc:__call(args)
 	if type(args) == 'string' then
 		args = {code=args}
@@ -158,16 +183,7 @@ function Preproc:__call(args)
 	local code = assert(args.code, "expected code")
 
 	if args.includeDirs then
-		self.includeDirs = table(args.includeDirs)
-	else
-		local incenv = os.getenv'INCLUDE'
-		if incenv then
-			self.includeDirs = string.split(incenv, ';')
-		end
-	end
-	-- should I fix paths of the user-provided includeDirs? or just INCLUDE?
-	for i=1,#self.includeDirs do
-		self.includeDirs[i] = self.includeDirs[i]:gsub('\\', '/')
+		self:addIncludeDirs(args.includeDirs)
 	end
 
 	self.includeStack = table()
@@ -176,9 +192,7 @@ function Preproc:__call(args)
 	local lines = string.split(code, '\n')
 
 	if args.macros then
-		for k,v in pairs(args.macros) do
-			self.macros[k] = v
-		end
+		self:setMacros(args.macros)
 	end
 
 	local ifstack = table()

@@ -24,7 +24,32 @@ process multiple files:
 ```
 local Preproc = require 'preproc'
 local preproc = Preproc()
-print(Preproc
+print(preproc{
+	code = '#include <file1.h>',
+	macros = ...,
+	includeDirs = ...,
+})
+print(preproc{
+	code = '#include <file2.h>',
+	macros = ...,
+	includeDirs = ...,
+})
+
+```
+
+or modify the state as we go:
+```
+preproc:setMacros{
+	KEY1 = 'value1',
+	KEY2 = 'value2',
+	...
+}
+preproc:addIncludeDir'path/too/foo/bar.h'
+preproc:addIncludeDirs{
+	'dir1/file1.h',
+	'dir2/file2.h',
+	...
+}
 ```
 
 returns an object that is cast to its .code field which contains the result.

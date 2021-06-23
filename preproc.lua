@@ -713,8 +713,8 @@ print('got cond', cond)
 						if not fn then
 							error("couldn't find include file "..search)
 						end
-						lines:insert(i, '/* END '..fn..' */')
 						if not self.alreadyIncludedFiles[fn] then
+							lines:insert(i, '/* END '..fn..' */')
 							-- at position i, insert the file
 							local newcode = assert(file[fn], "couldn't find file "..fn)
 
@@ -726,8 +726,8 @@ print('got cond', cond)
 							end
 							
 							self.includeStack:insert(fn)
+							lines:insert(i, '/* BEGIN '..fn..' */')
 						end
-						lines:insert(i, '/* BEGIN '..fn..' */')
 					end
 					i = i - 1
 				elseif cmd == 'pragma' then

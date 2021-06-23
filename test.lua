@@ -35,7 +35,7 @@ local code = preproc'#include <KHR/khrplatform.h>'
 file['khrplatform.h'] = code
 ffi.cdef(code)
 
---[[
+-- [[
 preproc:setMacros{
 	GL_GLEXT_PROTOTYPES = '',
 }

@@ -33,14 +33,15 @@ local function removeCommentsAndApplyContinuations(code)
 		code = code:sub(1,i-1)..code:sub(j+2)
 	until false
 
-	-- remove all // \n blocks first
+	-- [[ remove all // \n blocks first
 	repeat
 		local i = code:find('//',1,true)
 		if not i then break end
 		local j = code:find('\n',i+2,true) or #code
 		code = code:sub(1,i-1)..code:sub(j)
 	until false
-	
+	--]]
+
 	return code
 end
 
@@ -566,6 +567,9 @@ function Preproc:__call(args)
 								params = params,
 								def = paramdef,
 							}
+								
+							lines:remove(i)
+							i = i - 1
 						else
 						
 							local k, v = rest:match'^(%S+)%s+(.-)$'
@@ -582,17 +586,35 @@ function Preproc:__call(args)
 --print('defining empty',k,v)
 								self.macros[k] = v
 							end
-						end
-						--if it is a number define
-						local isnumber = tonumber(v)	-- TODO also check valid suffixes?
-						if isnumber then
+						
+							--if it is a number define
+							local isnumber = tonumber(v)	-- TODO also check valid suffixes?
+							if isnumber then
 --print('line was', l)
-							l = 'enum { '..k..' = '..v..' };'
-							lines[i] = l
+								if self.macros[k] then
+									if self.macros[k] ~= v then
+										print('warning: redefining '..k)
+									end
+									lines:remove(i)
+									i = i - 1
+								else
+									l = 'enum { '..k..' = '..v..' };'
+									lines[i] = l
+								end
 --print('line is', l)
-						else
-							lines:remove(i)
-							i = i - 1
+							else
+								-- macros don't get eval'd until they are used
+								-- but to replace them with enums maens evaluating them immediately
+								-- ... or it means saving track fo the linenos of all the original defines and then evaluating them last and going back and replacing them
+								-- hmmm
+								-- but for now, just replace define with enum on immediate values
+								--[[
+								l = "// couldn't convert "..l
+								lines[i] = l
+								--]]
+								lines:remove(i)
+								i = i - 1
+							end
 						end
 					else
 						lines:remove(i)
@@ -741,10 +763,18 @@ function Preproc:__call(args)
 		os.exit(1)
 	end)
 
+	-- remove empty lines
+	lines = lines:filter(function(l)
+		return l:match'%S'
+	end)
+	-- remove \r's
+	lines = lines:mapi(function(l)
+		return string.trim(l)
+	end)
+
 	code = lines:concat'\n'
 	
 	self.code = code
-	
 	return code
 end
 

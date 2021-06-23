@@ -97,71 +97,104 @@ function Preproc:searchForInclude(fn)
 	end
 end
 
+local function handleMacroWithArgs(l, macros, key, vparams)
+	local pat = key..'%s*(%b())'
+	local j,k = l:find(pat)
+	if not j then return end
+
+	local before = l:sub(j-1,j-1)
+	if before:match'[_a-zA-Z0-9]' then return end
+
+print('found macro', key)
+	local paramStr = l:sub(j,k):match(pat)
+	paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
+	-- so now split by commas, but ignore commas that are out of balance with parenthesis
+	local parcount = 0
+	local paramIndex = 0
+	local last = 1
+	local paramMap = {}
+	do
+		local i = 1
+		while i <= #paramStr do
+			local ch = paramStr:sub(i,i)
+			if ch == '(' then
+				parcount = parcount + 1
+			elseif ch == ')' then
+				parcount = parcount - 1
+			elseif ch == '"' then
+				-- skip to the end of the quote
+				i = i + 1
+				while paramStr:sub(i,i) ~= '"' do
+					if paramStr:sub(i,i) == '\\' then
+						i = i + 1
+					end
+					i = i + 1
+				end
+				i = i + 1
+			elseif ch == ',' then
+				if parcount == 0 then
+					local paramvalue = paramStr:sub(last, i-1)
+					paramIndex = paramIndex + 1
+					paramMap[vparams[paramIndex]] = paramvalue
+					last = i + 1
+				end
+			end
+			i = i + 1
+		end
+	end
+	assert(parcount == 0, "macro mismatched ()'s")
+	local paramvalue = paramStr:sub(last)
+	paramIndex = paramIndex + 1
+	local macrokey = vparams[paramIndex]
+print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
+	paramMap[macrokey] = paramvalue
+	
+	assert(paramIndex == #vparams, "macro expected "..#vparams.."  but found "..paramIndex)
+
+	return j, k, paramMap
+end
+
 --[[
 argsonly = set to true to only expand macros that have arguments
 useful for if evaluation
 --]]
-function Preproc:replaceMacros(l, macros, argsonly)
+function Preproc:replaceMacros(l, macros, alsoDefined)
 	macros = macros or self.macros
 	local found
 	repeat
 		found = nil
+		-- handle builtin 'defined' first, if we are asked to
+		if alsoDefined then
+			local j, k, paramMap = handleMacroWithArgs(l, macros, 'defined', {'x'})
+			if j then
+				local query = paramMap.x
+				local def = macros[query] and 1 or 0
+				l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
+				found = true
+			end
+		end
 		for key,v in pairs(macros) do
 			if type(v) == 'table' then
-				local pat = key..'%s*(%b())'
-				local j,k = l:find(pat)
+				local j, k, paramMap = handleMacroWithArgs(l, macros, key, v.params)
 				if j then
-					local before = l:sub(j-1,j-1)
-					if not before:match'[_a-zA-Z0-9]' then
-						local paramStr = l:sub(j,k):match(pat)
-						paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
-						-- so now split by commas, but ignore commas that are out of balance with parenthesis
-						local parcount = 0
-						local paramIndex = 0
-						local last = 1
-						local paramMap = {}
-						for i=1,#paramStr do
-							local ch = paramStr:sub(i,i)
-							if ch == '(' then
-								parcount = parcount + 1
-							elseif ch == ')' then
-								parcount = parcount - 1
-							elseif ch == ',' then
-								if parcount == 0 then
-									local paramvalue = paramStr:sub(last, i-1)
-									paramIndex = paramIndex + 1
-									paramMap[v.params[paramIndex]] = paramvalue
-									last = i + 1
-								end
-							end
-						end
-						if parcount ~= 0 then
-							error("macro mismatched ()'s")
-						end
-						local paramvalue = paramStr:sub(last)
-						paramIndex = paramIndex + 1
-						paramMap[v.params[paramIndex]] = paramvalue
-						
-						assert(paramIndex == #v.params, "macro expected "..#v.params.."  but found "..paramIndex)
-
-						-- now replace all of v.params strings with params
-						local def = self:replaceMacros(v.def, paramMap)
-
-						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
-						found = true
-					end
+print('replacing with params', tolua(v))
+					-- now replace all of v.params strings with params
+					local def = self:replaceMacros(v.def, paramMap)
+					l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
+					found = true
+					break
 				end
-			elseif not argsonly then
+			else
 				local j,k = l:find(key)
 				if j then 
-print('found macro '..key)
 					-- make sure the symbol before and after is not a name character
 					local before = l:sub(j-1,j-1)
 					local after = l:sub(k+1,k+1)
 					if not before:match'[_a-zA-Z0-9]'
 					and not after:match'[_a-zA-Z0-9]'
 					then
-print('replacing', key, v)
+print('found macro', key)
+print('replacing with', v)
 						
 						-- if the macro has params then expect a parenthesis after k
 						-- and replace all the instances of v's params in v'def with the values in those parenthesis
@@ -170,6 +203,7 @@ print('replacing', key, v)
 
 						l = l:sub(1,j-1) .. ' ' .. v .. ' ' .. l:sub(k+1)
 						found = true
+						break
 					end
 				end
 			end
@@ -186,7 +220,7 @@ local function castnumber(x)
 end
 
 -- now to evalute the tree
-function Preproc:processExprAST(t)
+function Preproc:evalAST(t)
 	if t[1] == 'defined' then
 		return self.macros[t[2]] and 1 or 0
 	elseif t[1] == 'macro' then
@@ -201,43 +235,43 @@ print('replacing', t[2],' with ',v)
 	elseif t[1] == 'number' then
 		return assert(tonumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
-		return castnumber(self:processExprAST(t[2])) == 0 and 1 or 0
+		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
 	elseif t[1] == '&&' then
-		if castnumber(self:processExprAST(t[2])) ~= 0
-		and castnumber(self:processExprAST(t[3])) ~= 0
+		if castnumber(self:evalAST(t[2])) ~= 0
+		and castnumber(self:evalAST(t[3])) ~= 0
 		then 
 			return 1 
 		end
 		return 0
 	elseif t[1] == '||' then
-		if self:processExprAST(t[2]) ~= 0
-		or self:processExprAST(t[3]) ~= 0
+		if self:evalAST(t[2]) ~= 0
+		or self:evalAST(t[3]) ~= 0
 		then 
 			return 1 
 		end
 		return 0
 	elseif t[1] == '&' then
 		return bit.band(
-			castnumber(self:processExprAST(t[2])),
-			castnumber(self:processExprAST(t[3]))
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '|' then
 		return bit.bor(
-			castnumber(self:processExprAST(t[2])),
-			castnumber(self:processExprAST(t[3]))
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '==' then
-		return (castnumber(self:processExprAST(t[2])) == castnumber(self:processExprAST(t[3]))) and 1 or 0
+		return (castnumber(self:evalAST(t[2])) == castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>=' then
-		return (castnumber(self:processExprAST(t[2])) >= castnumber(self:processExprAST(t[3]))) and 1 or 0
+		return (castnumber(self:evalAST(t[2])) >= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<=' then
-		return (castnumber(self:processExprAST(t[2])) <= castnumber(self:processExprAST(t[3]))) and 1 or 0
+		return (castnumber(self:evalAST(t[2])) <= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '!=' then
-		return (castnumber(self:processExprAST(t[2])) ~= castnumber(self:processExprAST(t[3]))) and 1 or 0
+		return (castnumber(self:evalAST(t[2])) ~= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>' then
-		return (castnumber(self:processExprAST(t[2])) > castnumber(self:processExprAST(t[3]))) and 1 or 0
+		return (castnumber(self:evalAST(t[2])) > castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<' then
-		return (castnumber(self:processExprAST(t[2])) < castnumber(self:processExprAST(t[3]))) and 1 or 0
+		return (castnumber(self:evalAST(t[2])) < castnumber(self:evalAST(t[3]))) and 1 or 0
 	else
 		error("don't know how to handle this ast entry "..t[1])
 	end
@@ -333,56 +367,11 @@ print('cur', cur)
 		local level1
 
 		local function level4()
-			if canbe'defined' then
-				if canbe'%(' then
-					local name = mustbe(namepat)
-					mustbe'%)'
-					local result = {'defined', name}
-print('got', tolua(result))
-					return result
-				else
-					local name = mustbe(namepat)
-					local result = {'defined', name}
-print('got', tolua(result))
-					return result
-				end
-			elseif canbe'!' then
+			if canbe'!' then
 				local a = level1()
 				local result = {'!', a}
 print('got', tolua(result))
 				return result
-			elseif canbe(namepat) then
-				local name = assert(prev)
-				if canbe'%(' then
-					-- read until balanced closing ) ...
-
-					local args = table()
-					if not canbe'%)' then
-						args:insert(level1())
-						while canbe',' do
-							args:insert(level1())
-						end
-						mustbe'%)'
-					end
-					local str = name..'('..args:mapi(function(arg)
-						return self:processExprAST(arg)
-					end):concat','..')'
-					assert(str)
-					local result = {'number', self:parseCondInt(str)}
-print('got', tolua(result))
-					return result
-				else
-					assert(name)
-					local def = self.macros[name]
-					if def then 
-print('parsing', def)					
-						def = self:parseCondInt(def) 
-print('parsed', tolua(def))					
-					end
-					local result = {'number', castnumber(def)}
-print('got', tolua(result))
-					return result
-				end
 			elseif canbe(decpat) or canbe(hexpat) then
 				local dec = prev:match'(%d+)[Ll]?'
 				local val
@@ -400,6 +389,61 @@ print('got', tolua(result))
 				mustbe'%)'
 print('got', tolua(result))				
 				return node
+			
+			-- have to handle 'defined' without () because it takes an implicit 1st arg
+			elseif canbe'defined' then
+--[=[ handle 'defined' as the ast, or handle it above as the macro expander?			
+				if canbe'%(' then
+					local name = mustbe(namepat)
+					mustbe'%)'
+					local result = {'defined', name}
+print('got', tolua(result))
+					return result
+				else
+--]=] 			do
+					local name = mustbe(namepat)
+					local result = {'defined', name}
+print('got', tolua(result))
+					return result
+				end
+--[=[ handle 'defined' as the ast, or handle it above as the macro expander?			
+			elseif canbe(namepat) then
+				local name = assert(prev)
+				if canbe'%(' then
+					-- read until balanced closing ) ...
+
+					local args = table()
+					if not canbe'%)' then
+						args:insert(level1())
+						while canbe',' do
+							args:insert(level1())
+						end
+						mustbe'%)'
+					end
+					local str = name..'('..args:mapi(function(arg)
+						return self:evalAST(arg)
+					end):concat','..')'
+					assert(str)
+					local result = {'number', self:parseCondInt(str)}
+print('got', tolua(result))
+					return result
+				else
+					assert(name)
+					local def = self.macros[name]
+					if def then 
+print('parsing', def)					
+						def = self:parseCondInt(def) 
+print('parsed', tolua(def))					
+					end
+					local result = {'number', castnumber(def)}
+print('got', tolua(result))
+					return result
+				end
+--]=]
+-- [=[ if we've already expanded all known macros then only unknown will be here:	
+			elseif canbe(namepat) then
+				return {'number', 0}
+--]=]
 			else
 				error("failed to parse expression: "..cur)
 			end
@@ -457,7 +501,7 @@ print('got expression tree', tolua(parse))
 
 		mustbe''
 
-		cond = self:processExprAST(parse)
+		cond = self:evalAST(parse)
 print('got cond', cond)
 
 	end, function(err)
@@ -545,7 +589,7 @@ print('defining with params',k,params,paramdef)
 
 							params = string.split(params, ','):mapi(string.trim)
 							for i,param in ipairs(params) do
-								assert(isvalidsymbol(param), "macro param #"..i.." is an invalid name")
+								assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name")
 							end
 						
 							self.macros[k] = {
@@ -710,7 +754,7 @@ print('line is', l)
 			print(' at '..inc)
 		end
 		print('at line: '..i)
-		--print('macros: '..tolua(self.macros))
+		print('macros: '..tolua(self.macros))
 		print(err..'\n'..debug.traceback())
 		os.exit(1)
 	end)

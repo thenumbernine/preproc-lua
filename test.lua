@@ -6,9 +6,23 @@ local preproc = require 'preproc'()
 -- I guess pick these to match the compiler used to build luajit
 -- TODO this could work if my macro evaluator could handle undef'd comparisons <=> replace with zero
 preproc:setMacros{
-	_WIN32 = '1',
+	__STDC_VERSION__ = '201710L',	-- c++17
+	__STDCPP_THREADS__ = '0',
 	_MSC_VER = '1929',
+	_MSC_FULL_VER = '192930038',
 	_MSVC_LANG = '201402',
+	_MSC_BUILD = '1',
+
+-- choose which apply:
+		_M_AMD64 = '100',
+	--_M_ARM = '7',
+	--_M_ARM_ARMV7VE = '1',
+	--_M_ARM64 = '1',
+	--_M_IX86 = '600',
+	_M_X64 = '100',
+
+	_WIN32 = '1',
+	_WIN64 = '1',
 }
 
 -- [[ does this just setup the preproc state?

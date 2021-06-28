@@ -43,11 +43,21 @@ preproc:setMacros{
 
 -- where I keep my glext.h and khr/khrplatform.h
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include')
+preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
 
-preproc:setMacros{
-	GL_GLEXT_PROTOTYPES = '',
-}
+--[[
+windows' gl/gl.h defines the following:
+#define GL_EXT_vertex_array               1
+#define GL_EXT_bgra                       1
+#define GL_EXT_paletted_texture           1
+#define GL_WIN_swap_hint                  1
+#define GL_WIN_draw_range_elements        1
+// #define GL_WIN_phong_shading              1
+// #define GL_WIN_specular_fog               1
 
+probably because their functions/macros are in the gl.h header
+BUT windows DOESNT define the true EXT-suffix functions
+--]]
 local gl = preproc[[
 #include <GL/gl.h>
 #include <GL/glext.h>

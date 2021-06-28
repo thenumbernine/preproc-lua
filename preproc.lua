@@ -771,8 +771,20 @@ function Preproc:__call(args)
 		return string.trim(l)
 	end)
 
+	-- join lines that don't end in a semicolon or comment
+	for i=#lines,1,-1 do
+		if lines[i]:sub(-1) ~= ';'
+		and lines[i]:sub(-2) ~= '*/'
+		and (i == #lines or lines[i+1]:sub(1,2) ~= '/*')
+		then
+			lines[i] = lines[i] .. ' ' .. lines:remove(i+1)
+		end
+	end
+
 	code = lines:concat'\n'
+
 	
+
 	self.code = code
 	return code
 end

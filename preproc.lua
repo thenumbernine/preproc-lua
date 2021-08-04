@@ -93,9 +93,9 @@ function Preproc:addIncludeDir(dir, sys)
 	end
 end
 
-function Preproc:addIncludeDirs(dirs)
+function Preproc:addIncludeDirs(dirs, ...)
 	for _,dir in ipairs(dirs) do
-		self:addIncludeDir(dir)
+		self:addIncludeDir(dir, ...)
 	end
 end
 
@@ -715,7 +715,16 @@ function Preproc:__call(args)
 						local search = fn
 						fn = self:searchForInclude(fn, sys)
 						if not fn then
-							error("couldn't find include file "..search)
+							io.stderr:write('sys '..tostring(sys)..'\n')
+							if sys then
+								io.stderr:write('sys search paths:\n')
+								io.stderr:write(self.sysIncludeDirs:concat'\n'..'\n')
+							else
+								io.stderr:write('user search paths:\n')
+								io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
+							end
+							io.stderr:flush()
+							error("couldn't find include file "..search..'\n')
 						end
 						if not self.alreadyIncludedFiles[fn] then
 							lines:insert(i, '/* END '..fn..' */')

@@ -54,10 +54,20 @@ print(results)
 	assert(results:match'include')
 	assert(results:match('#include'))	-- why doesn't this match? 
 	assert(results:match'#include "%.%.%." search starts here:')
-	local userSearch, sysSearch = results:match'#include "%.%.%." search starts here:(.-)#include <%.%.%.> search starts here:(.-)End of search list%.'
-	assert(userSearch)
-	preproc:addIncludeDirs(string.split(string.trim(userSearch), '\n'):mapi(string.trim), false)
-	preproc:addIncludeDirs(string.split(string.trim(sysSearch), '\n'):mapi(string.trim), true)
+	local userSearchStr, sysSearchStr = results:match'#include "%.%.%." search starts here:(.-)#include <%.%.%.> search starts here:(.-)End of search list%.'
+	assert(userSearchStr)
+	print('userSearchStr')
+	print(userSearchStr)
+	print('sysSearchStr')
+	print(sysSearchStr)
+	local userSearchDirs = string.split(string.trim(userSearchStr), '\n'):mapi(string.trim)
+	local sysSearchDirs = string.split(string.trim(sysSearchStr), '\n'):mapi(string.trim)
+	print('userSearchDirs')
+	print(require 'ext.tolua'(userSearchDirs))
+	print('sysSearchDirs')
+	print(require 'ext.tolua'(sysSearchDirs))
+	preproc:addIncludeDirs(userSearchDirs, false)
+	preproc:addIncludeDirs(sysSearchDirs, true)
 end
 
 -- where I keep my glext.h and khr/khrplatform.h

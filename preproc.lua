@@ -53,7 +53,8 @@ Preproc(code)
 Preproc(args)
 args = table of:
 	code = code to use
-	includeDirs = include directories to use
+	sysIncludeDirs = include directories to use for ""
+	userIncludeDirs = include directories to use for <>
 	macros = macros to use
 --]]
 function Preproc:init(args)
@@ -63,11 +64,16 @@ function Preproc:init(args)
 	self.macros = {}
 	self.alreadyIncludedFiles = {}
 
-	self.includeDirs = table()
+	self.sysIncludeDirs = table()
+	self.userIncludeDirs = table()
 
+	-- the INCLUDE env var is for <> and not "", right?
+	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ... 
+	-- maybe it's just for make?
+	-- yup, and make puts INCLUDE as a <> search folder
 	local incenv = os.getenv'INCLUDE'
 	if incenv then
-		self:addIncludeDirs(string.split(incenv, ';'))
+		self:addIncludeDirs(string.split(incenv, ';'), true)
 	end
 end
 
@@ -77,10 +83,14 @@ function Preproc:setMacros(args)
 	end
 end
 
-function Preproc:addIncludeDir(dir)
-	-- should I fix paths of the user-provided includeDirs? or just INCLUDE?
+function Preproc:addIncludeDir(dir, sys)
+	-- should I fix paths of the user-provided userIncludeDirs? or just INCLUDE?
 	dir = dir:gsub('\\', '/')
-	self.includeDirs:insert(dir)
+	if sys then
+		self.sysIncludeDirs:insert(dir)
+	else
+		self.userIncludeDirs:insert(dir)
+	end
 end
 
 function Preproc:addIncludeDirs(dirs)
@@ -89,8 +99,9 @@ function Preproc:addIncludeDirs(dirs)
 	end
 end
 
-function Preproc:searchForInclude(fn)
-	for _,d in ipairs(self.includeDirs) do
+function Preproc:searchForInclude(fn, sys)
+	-- TODO separate searches for system vs user include?
+	for _,d in ipairs(sys and self.sysIncludeDirs or self.userIncludeDirs) do
 		local p = d..'/'..fn
 		p = p:gsub('//', '/')
 		if os.fileexists(p) then
@@ -492,8 +503,11 @@ function Preproc:__call(args)
 
 	local code = assert(args.code, "expected code")
 
-	if args.includeDirs then
-		self:addIncludeDirs(args.includeDirs)
+	if args.sysIncludeDirs then
+		self:addIncludeDirs(args.sysIncludeDirs, true)
+	end
+	if args.userIncludeDirs then
+		self:addIncludeDirs(args.userIncludeDirs, false)
 	end
 
 	self.includeStack = table()

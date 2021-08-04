@@ -2,6 +2,7 @@ local string = require 'ext.string'
 local table = require 'ext.table'
 local tolua = require 'ext.tolua'
 local os = require 'ext.os'
+local io = require 'ext.io'
 local file = require 'ext.file'
 local class = require 'ext.class'
 
@@ -99,11 +100,33 @@ function Preproc:addIncludeDirs(dirs, ...)
 	end
 end
 
-function Preproc:searchForInclude(fn, sys)
-	-- TODO separate searches for system vs user include?
-	for _,d in ipairs(sys and self.sysIncludeDirs or self.userIncludeDirs) do
+function Preproc:searchForInclude(fn, sys, startHere)
+	local includeDirs = sys and self.sysIncludeDirs or self.userIncludeDirs
+	local startIndex
+	if startHere then
+--print('searching '..tolua(includeDirs))
+--print('search starting '..tostring(startHere))		
+		startHere = startHere:match'^(.-)/*$'	-- remove trailing /'s
+		for i=1,#includeDirs do
+			local dir = includeDirs[i]:match'^(.-)/*$'
+--print("does "..tostring(startHere).." match "..tostring(dir).." ? "..tostring(dir == startHere))			
+			if dir == startHere then
+				startIndex = i+1
+				break
+			end
+		end
+--print('startIndex '..tostring(startIndex))		
+		-- if we couldn't find startHere then ... is that good? do we just fallback on default? or do we error?
+		-- startHere is set when we are already in a file of a matching name, so we should be finding something, right?
+		if not startIndex then
+			error'here'
+		end
+	end
+	startIndex = startIndex or 1
+	for i=startIndex,#includeDirs do
+		d = includeDirs[i]
 		local p = d..'/'..fn
-		p = p:gsub('//', '/')
+		p = p:gsub('//+', '/')
 		if os.fileexists(p) then
 			return p
 		end
@@ -253,10 +276,74 @@ end
 -- now to evalute the tree
 function Preproc:evalAST(t)
 	if t[1] == 'number' then
+		assert(#t == 2)
 		return assert(tonumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
+		assert(#t == 2)
 		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
+	elseif t[1] == '~' then
+		assert(#t == 2)
+		-- TODO here we are using ffi's bit lib ...
+		return bit.bnot(castnumber(self:evalAST(t[2]))) 
+	elseif t[1] == '^' then
+		assert(#t == 3)
+		return bit.bxor(
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))) 
+	elseif t[1] == '&' then
+		assert(#t == 3)
+		return bit.band(
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))
+		)
+	elseif t[1] == '|' then
+		assert(#t == 3)
+		return bit.bor(
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))
+		)
+	elseif t[1] == '<<' then
+		assert(#t == 3)
+		return bit.lshift(
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))
+		)
+	elseif t[1] == '>>' then
+		assert(#t == 3)
+		return bit.rshift(
+			castnumber(self:evalAST(t[2])),
+			castnumber(self:evalAST(t[3]))
+		)
+	elseif t[1] == '+' then
+		assert(#t == 2 or #t == 3)
+		if #t == 3 then
+			return castnumber(self:evalAST(t[2]))
+				+ castnumber(self:evalAST(t[3]))
+		elseif #t == 2 then
+			return castnumber(self:evalAST(t[2]))
+		end
+	elseif t[1] == '-' then
+		assert(#t == 2 or #t == 3)
+		if #t == 3 then
+			return castnumber(self:evalAST(t[2]))
+				- castnumber(self:evalAST(t[3]))
+		elseif #t == 2 then
+			return -castnumber(self:evalAST(t[2]))
+		end
+	elseif t[1] == '*' then
+		assert(#t == 3)
+		return castnumber(self:evalAST(t[2]))
+			* castnumber(self:evalAST(t[3]))
+	elseif t[1] == '/' then
+		assert(#t == 3)
+		return castnumber(self:evalAST(t[2]))
+			/ castnumber(self:evalAST(t[3]))
+	elseif t[1] == '%' then
+		assert(#t == 3)
+		return castnumber(self:evalAST(t[2]))
+			% castnumber(self:evalAST(t[3]))
 	elseif t[1] == '&&' then
+		assert(#t == 3)
 		if castnumber(self:evalAST(t[2])) ~= 0
 		and castnumber(self:evalAST(t[3])) ~= 0
 		then 
@@ -264,34 +351,38 @@ function Preproc:evalAST(t)
 		end
 		return 0
 	elseif t[1] == '||' then
+		assert(#t == 3)
 		if self:evalAST(t[2]) ~= 0
 		or self:evalAST(t[3]) ~= 0
 		then 
 			return 1 
 		end
 		return 0
-	elseif t[1] == '&' then
-		return bit.band(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))
-		)
-	elseif t[1] == '|' then
-		return bit.bor(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))
-		)
 	elseif t[1] == '==' then
+		assert(#t == 3)
 		return (castnumber(self:evalAST(t[2])) == castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>=' then
+		assert(#t == 3)
 		return (castnumber(self:evalAST(t[2])) >= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<=' then
+		assert(#t == 3)
 		return (castnumber(self:evalAST(t[2])) <= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '!=' then
+		assert(#t == 3)
 		return (castnumber(self:evalAST(t[2])) ~= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>' then
+		assert(#t == 3)
 		return (castnumber(self:evalAST(t[2])) > castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<' then
+		assert(#t == 3)
 		return (castnumber(self:evalAST(t[2])) < castnumber(self:evalAST(t[3]))) and 1 or 0
+	elseif t[1] == '?' then
+		assert(#t == 4)
+		if castnumber(self:evalAST(t[2])) ~= 0 then
+			return castnumber(self:evalAST(t[3]))
+		else
+			return castnumber(self:evalAST(t[4]))
+		end
 	else
 		error("don't know how to handle this ast entry "..t[1])
 	end
@@ -348,13 +439,24 @@ expr = self:replaceMacros(expr, nil, true)
 				'>=',
 				'<=',
 				'!=',
+				'<<',
+				'>>',
 				'>',
 				'<',
 				'!',
 				'&',
 				'|',
+				'%+',
+				'%-',
+				'%*',
+				'/',
+				'%%',
+				'%^',
+				'~',
 				'%(',
 				'%)',
+				'%?',
+				':',
 				',',
 			} do
 				local symbol = readnext(pat)
@@ -365,7 +467,7 @@ expr = self:replaceMacros(expr, nil, true)
 				end
 			end	
 
-			error("couldn't understand token here: "..expr:sub(cur))
+			error("couldn't understand token here: "..('%q'):format(expr:sub(col)))
 		end
 
 		next()
@@ -386,13 +488,8 @@ expr = self:replaceMacros(expr, nil, true)
 
 		local level1
 
-		local function level4()
-			if canbe'!' then
-				local a = level4()
-				local result = {'!', a}
---print('got', tolua(result))
-				return result
-			elseif canbe(decpat) or canbe(hexpat) then
+		local function level13()
+			if canbe(decpat) or canbe(hexpat) then
 				local dec = prev:match'(%d+)[Ll]?'
 				local val
 				if dec then
@@ -425,14 +522,137 @@ expr = self:replaceMacros(expr, nil, true)
 			end
 		end
 
-		local function level3()
-			local a = level4()
-			if canbe'==' 
-			or canbe'!='
-			or canbe'>='
+		local function level12()
+			if canbe'+'
+			or canbe'-'
+			or canbe'!'
+			or canbe'~'
+			-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
+			then
+				local op = prev
+				local b = level13()
+				local result = {op, b}
+--print('got', tolua(result))
+				return result
+			end
+			return level13()
+		end
+
+		local function level11()
+			local a = level12()
+			if canbe'*'
+			or canbe'/'
+			or canbe'%'
+			then
+				local op = prev
+				local b = level11()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+
+		local function level10()
+			local a = level11()
+			if canbe'+'
+			or canbe'-'
+			then
+				local op = prev
+				local b = level10()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+
+		local function level9()
+			local a = level10()
+			if canbe'>>'
+			or canbe'<<'
+			then
+				local op = prev
+				local b = level9()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+
+		local function level8()
+			local a = level9()
+			if canbe'>='
 			or canbe'<='
 			or canbe'>'
 			or canbe'<'
+			then
+				local op = prev
+				local b = level8()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+
+		local function level7()
+			local a = level8()
+			if canbe'==' 
+			or canbe'!='
+			then
+				local op = prev
+				local b = level7()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a
+		end
+	
+		local function level6()
+			local a = level7()
+			if canbe'&' 
+			then
+				local op = prev
+				local b = level6()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a	
+		end
+
+		local function level5()
+			local a = level6()
+			if canbe'^' 
+			then
+				local op = prev
+				local b = level5()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a	
+		end
+
+		local function level4()
+			local a = level5()
+			if canbe'|' 
+			then
+				local op = prev
+				local b = level4()
+				local result = {op, a, b}
+--print('got', tolua(result))				
+				return result
+			end
+			return a	
+		end
+
+		local function level3()
+			local a = level4()
+			if canbe'&&' 	
 			then
 				local op = prev
 				local b = level3()
@@ -446,7 +666,6 @@ expr = self:replaceMacros(expr, nil, true)
 		local function level2()
 			local a = level3()
 			if canbe'||' 
-			or canbe'&&' 	
 			then
 				local op = prev
 				local b = level2()
@@ -459,16 +678,17 @@ expr = self:replaceMacros(expr, nil, true)
 
 		level1 = function()
 			local a = level2()
-			if canbe'|' 
-			or canbe'&' 	
+			if canbe'?'
 			then
 				local op = prev
 				local b = level1()
-				local result = {op, a, b}
+				mustbe':'
+				local c = level1()
+				local result = {op, a, b, c}
 --print('got', tolua(result))				
 				return result
 			end
-			return a	
+			return a
 		end
 
 		local parse = level1()
@@ -699,6 +919,12 @@ function Preproc:__call(args)
 					end
 					lines:remove(i)
 					i = i - 1
+				elseif cmd == 'warning' then
+					if eval then
+						print('warning: '..rest)
+					end
+					lines:remove(i)
+					i = i - 1
 				elseif cmd == 'include' then
 					local sys = true
 					local fn = rest:match'^<(.*)>$'
@@ -727,6 +953,7 @@ function Preproc:__call(args)
 							error("couldn't find include file "..search..'\n')
 						end
 						if not self.alreadyIncludedFiles[fn] then
+--print('include '..fn)							
 							lines:insert(i, '/* END '..fn..' */')
 							-- at position i, insert the file
 							local newcode = assert(file[fn], "couldn't find file "..fn)
@@ -743,6 +970,68 @@ function Preproc:__call(args)
 						end
 					end
 					i = i - 1
+				elseif cmd == 'include_next' then
+					-- same as include .. except use the *next* search path for this file
+					local sys = true
+					local fn = rest:match'^<(.*)>$'
+					if not fn then
+						sys = false
+						fn = rest:match'^"(.*)"$'
+					end
+					if not fn then
+						error("include expected file: "..l)
+					end
+					
+					lines:remove(i)
+					if eval then
+						local search = fn
+--print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))						
+						-- search through the include stack for the most recent file with the name of what we're looking for ...
+						local foundPrevIncludeDir
+						for i=#self.includeStack,1,-1 do
+							local includeNextFile = self.includeStack[i]
+							local dir, prevfn = io.getfiledir(includeNextFile)
+--print(includeNextFile, dir, prevfn)
+							if prevfn == fn then
+								foundPrevIncludeDir = dir
+								break
+							end
+						end
+--print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
+						-- and if we didn't find it, just use nil, and searchForInclude will do a regular search and get the first option
+						fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
+						
+						if not fn then
+							io.stderr:write('sys '..tostring(sys)..'\n')
+							if sys then
+								io.stderr:write('sys search paths:\n')
+								io.stderr:write(self.sysIncludeDirs:concat'\n'..'\n')
+							else
+								io.stderr:write('user search paths:\n')
+								io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
+							end
+							io.stderr:flush()
+							error("couldn't find include file "..search..'\n')
+						end
+						if not self.alreadyIncludedFiles[fn] then
+--print('include_next '..fn)							
+							lines:insert(i, '/* END '..fn..' */')
+							-- at position i, insert the file
+							local newcode = assert(file[fn], "couldn't find file "..fn)
+
+							newcode = removeCommentsAndApplyContinuations(newcode)	
+							local newlines = string.split(newcode, '\n')
+							
+							while #newlines > 0 do
+								lines:insert(i, newlines:remove())
+							end
+						
+							self.includeStack:insert(fn)
+							lines:insert(i, '/* BEGIN '..fn..' */')
+						end
+					end
+					i = i - 1
+			
 				elseif cmd == 'pragma' then
 					if eval then
 						if rest == 'once' then

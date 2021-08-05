@@ -228,11 +228,18 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 --print('replacing with params', tolua(v))
 						-- now replace all of v.params strings with params
 						local def = self:replaceMacros(v.def, paramMap, alsoDefined)
--- TODO space or nospace?
--- nospace = good for ## operator
--- space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
-def = def:gsub('##', '')						
+						--[[
+						TODO space or nospace?
+						nospace = good for ## operator
+						space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
+							gcc stdint.h:
+							#define __GLIBC_USE(F)	__GLIBC_USE_ ## F
+						I guess this is helping me make up my mind
+						--]]
+						local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
+						def = def:gsub('##', concatMarker)
 						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
+						l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
 						found = true
 						break
 					end
@@ -389,17 +396,17 @@ function Preproc:evalAST(t)
 end
 
 
-
-function Preproc:parseCondInt(expr)
-	local expr = expr
-assert(expr)
---print('evaluating condition:', expr)
+function Preproc:parseCondInt(origexpr)
+	local expr = origexpr
 	
+	assert(expr)
+	--print('evaluating condition:', expr)
+
 	-- does defined() work with macros with args?
 	-- if not then substitute macros with args here
 	-- if so then substitute it in the eval of macros later ...
-expr = self:replaceMacros(expr, nil, true)
---print('after macros:', expr)
+	expr = self:replaceMacros(expr, nil, true)
+	--print('after macros:', expr)
 
 	local col = 1
 	local cond
@@ -514,6 +521,7 @@ expr = self:replaceMacros(expr, nil, true)
 --print('got', tolua(result))
 				return result
 			elseif canbe(namepat) then
+				-- since we've already replaced all macros in the line, any unknown/remaining macro variable is going to evaluate to 0
 				local result = {'number', 0}
 --print('got', tolua(result))
 				return result
@@ -523,8 +531,8 @@ expr = self:replaceMacros(expr, nil, true)
 		end
 
 		local function level12()
-			if canbe'+'
-			or canbe'-'
+			if canbe'%+'
+			or canbe'%-'
 			or canbe'!'
 			or canbe'~'
 			-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
@@ -540,9 +548,9 @@ expr = self:replaceMacros(expr, nil, true)
 
 		local function level11()
 			local a = level12()
-			if canbe'*'
+			if canbe'%*'
 			or canbe'/'
-			or canbe'%'
+			or canbe'%%'
 			then
 				local op = prev
 				local b = level11()
@@ -555,8 +563,8 @@ expr = self:replaceMacros(expr, nil, true)
 
 		local function level10()
 			local a = level11()
-			if canbe'+'
-			or canbe'-'
+			if canbe'%+'
+			or canbe'%-'
 			then
 				local op = prev
 				local b = level10()
@@ -626,7 +634,7 @@ expr = self:replaceMacros(expr, nil, true)
 
 		local function level5()
 			local a = level6()
-			if canbe'^' 
+			if canbe'%^' 
 			then
 				local op = prev
 				local b = level5()
@@ -678,7 +686,7 @@ expr = self:replaceMacros(expr, nil, true)
 
 		level1 = function()
 			local a = level2()
-			if canbe'?'
+			if canbe'%?'
 			then
 				local op = prev
 				local b = level1()
@@ -703,6 +711,10 @@ expr = self:replaceMacros(expr, nil, true)
 	end, function(err)
 		rethrow = 
 			' at col '..col..'\n'
+			..' for orig expr:\n'
+			..origexpr..'\n'
+			..' for expr after macros:\n'
+			..expr..'\n'
 			..err..'\n'..debug.traceback()
 	end)
 	if rethrow then error(rethrow) end

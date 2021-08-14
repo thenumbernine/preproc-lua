@@ -87,9 +87,13 @@ windows' gl/gl.h defines the following:
 probably because their functions/macros are in the gl.h header
 BUT windows DOESNT define the true EXT-suffix functions
 --]]
-local gl = preproc[[
-#include <GL/gl.h>
-#include <GL/glext.h>
-]]
-file['gl.h'] = gl
-ffi.cdef(gl)
+local code = preproc(table{
+	...
+}:mapi(function(fn)
+	return '#include '..fn
+end):concat'\n'..'\n')
+
+-- see if there's any errors here
+ffi.cdef(code)
+
+print(code)

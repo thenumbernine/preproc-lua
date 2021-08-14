@@ -100,8 +100,19 @@ function Preproc:addIncludeDirs(dirs, ...)
 	end
 end
 
+
 function Preproc:searchForInclude(fn, sys, startHere)
-	local includeDirs = sys and self.sysIncludeDirs or self.userIncludeDirs
+	local includeDirs = sys 
+		and self.sysIncludeDirs 
+		
+		--[[
+		seems "" searches also check <> search paths
+		but do <> searches also search "" search paths?
+		why even use different search folders?
+		--]]
+		--or self.userIncludeDirs
+		or table():append(self.userIncludeDirs, self.sysIncludeDirs)
+	
 	local startIndex
 	if startHere then
 --print('searching '..tolua(includeDirs))
@@ -962,7 +973,7 @@ function Preproc:__call(args)
 								io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
 							end
 							io.stderr:flush()
-							error("couldn't find include file "..search..'\n')
+							error("couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
 						end
 						if not self.alreadyIncludedFiles[fn] then
 --print('include '..fn)							

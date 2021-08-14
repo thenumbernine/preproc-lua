@@ -1,6 +1,7 @@
 #!/usr/bin/env luajit
 local ffi = require 'ffi'
 local file = require 'ext.file'
+local table = require 'ext.table'
 local string = require 'ext.string'
 local io = require 'ext.io'
 

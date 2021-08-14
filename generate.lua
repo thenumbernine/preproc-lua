@@ -69,6 +69,17 @@ else	-- assume everything else uses gcc
 --print(require 'ext.tolua'(sysSearchDirs))
 	preproc:addIncludeDirs(userSearchDirs, false)
 	preproc:addIncludeDirs(sysSearchDirs, true)
+
+	-- how to handle gcc extension macros?
+	preproc[[
+#define __has_feature(x)		0
+#define __has_extension(x)		0
+#define __has_attribute(x)		0
+#define __has_cpp_attribute(x)	0
+#define __has_c_attribute(x)	0
+#define __has_builtin(x)		0
+#define __has_include(x)		0
+]]
 end
 
 -- where I keep my glext.h and khr/khrplatform.h

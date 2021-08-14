@@ -435,7 +435,7 @@ function Preproc:parseCondInt(origexpr)
 			readnext'%s*'
 		end
 
-		local decpat = '%d+[Ll]?'
+		local decpat = '%d+[LlU]?'
 		local hexpat = '0x%x+'
 
 		local prev, cur
@@ -508,7 +508,7 @@ function Preproc:parseCondInt(origexpr)
 
 		local function level13()
 			if canbe(decpat) or canbe(hexpat) then
-				local dec = prev:match'(%d+)[Ll]?'
+				local dec = prev:match'(%d+)[LlU]?'
 				local val
 				if dec then
 					val = assert(tonumber(dec), "expected number")	-- decimal number

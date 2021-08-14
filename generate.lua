@@ -84,6 +84,7 @@ end
 
 -- where I keep my glext.h and khr/khrplatform.h
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', false)
+--preproc:addIncludeDir('.', false)	-- cwd?
 preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
 
 --[[

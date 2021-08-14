@@ -507,8 +507,11 @@ function Preproc:parseCondInt(origexpr)
 		local level1
 
 		local function level13()
-			if canbe(decpat) or canbe(hexpat) then
-				local dec = prev:match'(%d+)[LlU]?'
+			-- make sure you match hexpat first
+			if canbe(hexpat)
+			or canbe(decpat)
+			then
+				local dec = prev:match'^(%d+)[LlU]?$'
 				local val
 				if dec then
 					val = assert(tonumber(dec), "expected number")	-- decimal number
@@ -895,7 +898,7 @@ function Preproc:__call(args)
 						cond = self:parseCondExpr(rest)
 						assert(cond ~= nil, "cond must be true or false")
 					end
---print('got cond', cond)
+--print('got cond', cond, 'from', rest)
 					ifstack:insert{cond, hasprocessed}
 					
 					lines:remove(i)

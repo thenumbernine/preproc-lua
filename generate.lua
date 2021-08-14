@@ -82,10 +82,15 @@ else	-- assume everything else uses gcc
 ]]
 end
 
+
+-- TODO do this externally so this is a more generic tool?
+-- maybe some -M argument?
+preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
+
+
 -- where I keep my glext.h and khr/khrplatform.h
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', false)
---preproc:addIncludeDir('.', false)	-- cwd?
-preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
+preproc:addIncludeDir('.', false)	-- cwd?
 
 --[[
 windows' gl/gl.h defines the following:
@@ -106,7 +111,15 @@ local code = preproc(table{
 	return '#include '..fn
 end):concat'\n'..'\n')
 
--- see if there's any errors here
-ffi.cdef(code)
-
 print(code)
+
+preproc'#error'
+
+-- see if there's any errors here
+--local result = xpcall(function()
+	ffi.cdef(code)
+--end, function(err)
+--	io.stderr:write('macros: '..tolua(self.macros)..'\n')
+--	io.stderr:wrie(err..'\n'..debug.traceback())
+--end)
+--os.exit(result and 0 or 1)

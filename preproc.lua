@@ -68,6 +68,8 @@ function Preproc:init(args)
 	self.sysIncludeDirs = table()
 	self.userIncludeDirs = table()
 
+	self.generatedEnums = {}
+
 	-- the INCLUDE env var is for <> and not "", right?
 	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ... 
 	-- maybe it's just for make?
@@ -829,7 +831,6 @@ function Preproc:__call(args)
 						else
 						
 							local k, v = rest:match'^(%S+)%s+(.-)$'
-							local oldv = self.macros[k]
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --print('defining value',k,v)
@@ -848,6 +849,7 @@ function Preproc:__call(args)
 							local isnumber = tonumber(v)	-- TODO also check valid suffixes?
 							if isnumber then
 --print('line was', l)
+								local oldv = self.generatedEnums[k]
 								if oldv then
 									if oldv ~= v then
 										print('warning: redefining '..k)
@@ -855,6 +857,7 @@ function Preproc:__call(args)
 									lines:remove(i)
 									i = i - 1
 								else
+									self.generatedEnums[k] = v
 									l = 'enum { '..k..' = '..v..' };'
 									lines[i] = l
 								end

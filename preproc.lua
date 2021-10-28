@@ -233,6 +233,19 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 				end
 			end
 		end
+		-- while we're here, how about the C99 _Pragma builtin macro .... bleh
+		if not found then
+			local j, k, paramMap = handleMacroWithArgs(l, macros, '_Pragma', {'x'})
+			if j then
+				-- don't do anything with it
+				-- looks like I'm not handling the # operator soon enough, and in hdf5 I'm getting
+				-- _Pragma (#GCC diagnostic push)
+				-- when I should be getting
+				--_Pragma ("GCC diagnostic push")
+				l = l:sub(1,j-1) .. ' ' .. l:sub(k+1)
+				found = true
+			end
+		end	
 		if not found then
 			for key,v in pairs(macros) do
 				if type(v) == 'table' then

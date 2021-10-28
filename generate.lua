@@ -89,8 +89,25 @@ preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
 
 
 -- where I keep my glext.h and khr/khrplatform.h
+-- TODO move this into gl.sh
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', false)
 preproc:addIncludeDir('.', false)	-- cwd?
+
+local args = table{...}
+do
+	local i = 1
+	while i <= #args do
+		local f = args[i]
+		if f:sub(1,2) == '-I' then
+			-- how to tell sys or not?
+			preproc:addIncludeDir(f:sub(3), true)
+			args:remove(i)
+		else
+			i = i + 1
+		end
+	end
+end
+local incfiles = args	-- whatever is left is include files
 
 --[[
 windows' gl/gl.h defines the following:
@@ -105,15 +122,13 @@ windows' gl/gl.h defines the following:
 probably because their functions/macros are in the gl.h header
 BUT windows DOESNT define the true EXT-suffix functions
 --]]
-local code = preproc(table{
-	...
-}:mapi(function(fn)
+local code = preproc(incfiles:mapi(function(fn)
 	return '#include '..fn
 end):concat'\n'..'\n')
 
 print(code)
 
-preproc'#error'
+--preproc'#error'
 
 -- see if there's any errors here
 --local result = xpcall(function()

@@ -93,7 +93,14 @@ preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', false)
 preproc:addIncludeDir('.', false)	-- cwd?
 
+--[[
+args:
+	-I<incdir> = add include dir
+	-skip <inc> = include it, add it to the state, but don't add it to the output
+		useful for system files that you don't want mixed in there
+--]]
 local args = table{...}
+local silentfiles = table()
 do
 	local i = 1
 	while i <= #args do
@@ -102,6 +109,9 @@ do
 			-- how to tell sys or not?
 			preproc:addIncludeDir(f:sub(3), true)
 			args:remove(i)
+		elseif f == "-skip" then
+			args:remove(i)
+			silentfiles:insert(args:remove(i))
 		else
 			i = i + 1
 		end
@@ -122,13 +132,14 @@ windows' gl/gl.h defines the following:
 probably because their functions/macros are in the gl.h header
 BUT windows DOESNT define the true EXT-suffix functions
 --]]
+for _,fn in ipairs(silentfiles) do
+	preproc("#include "..fn)
+end
 local code = preproc(incfiles:mapi(function(fn)
 	return '#include '..fn
 end):concat'\n'..'\n')
 
 print(code)
-
---preproc'#error'
 
 -- see if there's any errors here
 --local result = xpcall(function()

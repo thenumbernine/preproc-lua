@@ -14,7 +14,7 @@ end
 
 local function removeCommentsAndApplyContinuations(code)
 	
-	-- should line continuations \ affect single-line comments? 
+	-- should line continuations \ affect single-line comments?
 	-- if so then do this here
 	-- or should they not?  then do this after.
 	repeat
@@ -71,7 +71,7 @@ function Preproc:init(args)
 	self.generatedEnums = {}
 
 	-- the INCLUDE env var is for <> and not "", right?
-	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ... 
+	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ...
 	-- maybe it's just for make?
 	-- yup, and make puts INCLUDE as a <> search folder
 	local incenv = os.getenv'INCLUDE'
@@ -104,8 +104,8 @@ end
 
 
 function Preproc:searchForInclude(fn, sys, startHere)
-	local includeDirs = sys 
-		and self.sysIncludeDirs 
+	local includeDirs = sys
+		and self.sysIncludeDirs
 		
 		--[[
 		seems "" searches also check <> search paths
@@ -118,17 +118,17 @@ function Preproc:searchForInclude(fn, sys, startHere)
 	local startIndex
 	if startHere then
 --print('searching '..tolua(includeDirs))
---print('search starting '..tostring(startHere))		
+--print('search starting '..tostring(startHere))
 		startHere = startHere:match'^(.-)/*$'	-- remove trailing /'s
 		for i=1,#includeDirs do
 			local dir = includeDirs[i]:match'^(.-)/*$'
---print("does "..tostring(startHere).." match "..tostring(dir).." ? "..tostring(dir == startHere))			
+--print("does "..tostring(startHere).." match "..tostring(dir).." ? "..tostring(dir == startHere))
 			if dir == startHere then
 				startIndex = i+1
 				break
 			end
 		end
---print('startIndex '..tostring(startIndex))		
+--print('startIndex '..tostring(startIndex))
 		-- if we couldn't find startHere then ... is that good? do we just fallback on default? or do we error?
 		-- startHere is set when we are already in a file of a matching name, so we should be finding something, right?
 		if not startIndex then
@@ -155,11 +155,11 @@ local function handleMacroWithArgs(l, macros, key, vparams)
 	if before:match'[_a-zA-Z0-9]' then return end
 
 --print('found macro', key)
---print('replacing from params '..tolua(vparams))	
+--print('replacing from params '..tolua(vparams))
 	
 	local paramStr = l:sub(j,k):match(pat)
 	paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
---print('found paramStr', paramStr)	
+--print('found paramStr', paramStr)
 	-- so now split by commas, but ignore commas that are out of balance with parenthesis
 	local paramIndex = 0
 	local paramMap = {}
@@ -206,10 +206,69 @@ local function handleMacroWithArgs(l, macros, key, vparams)
 end
 
 --[[
+returns true if the subset of the line from [j,k] is within a string literal token
+j = start index, k = end index
+checkingIncludeString = set to "true" only when expanding macros of #include statement -- then we'll check for the macro within "" strings (and ignore escapes) *and* search within <> strings
+--]]
+local function isInString(line, j, k, checkingIncludeString)
+	if k < j then error("bad string range") end
+	local n = #line
+	if j < 1 or k < 1 or j > n or k > n then error("string range out of bounds") end
+	local i = 0
+	local inquote = false
+	while i <= n do
+		i = i + 1
+		local c = line:sub(i,i)
+
+		if checkingIncludeString then
+			-- #include string -- don't handle escapes, and optionally handle <>'s
+			if not inquote then
+				if c == '"'
+				or c == '<'
+				then
+					inquote = c
+				end
+			elseif inquote == '"' then
+				if c == '"' then
+					inquote = false
+				end
+			elseif inquote == '<' then
+				if c == '>' then
+					inquote = false
+				end
+			end
+		else
+			-- C string -- handle escapes
+			if not inquote then
+				if c == '"' then
+					inquote = true
+				end
+			else
+				if c == '\\' then
+					i = i + 1
+				end
+				if c == '"' then
+					inquote = false
+				end
+			end
+		end
+
+		if i >= j and i <= k then
+			if not inquote then
+--print('isInString '..line..' '..j..' '..k..' : false')
+				return false
+			end
+		end
+	end
+--	print('isInString '..line..' '..j..' '..k..' : true')
+	return true
+end
+
+--[[
 argsonly = set to true to only expand macros that have arguments
 useful for if evaluation
 --]]
-function Preproc:replaceMacros(l, macros, alsoDefined)
+function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 	macros = macros or self.macros
 	local found
 	repeat
@@ -226,7 +285,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 				-- whoever made the spec for the c preprocessor ... smh
 				-- here is the implicit 1 param define
 				local j, k, query = l:find('defined%s+('..namepat..')')
-				if j then
+				if j and not isInString(l, j, k, checkingIncludeString) then
 					local def = macros[query] and 1 or 0
 					l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
 					found = true
@@ -245,7 +304,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 				l = l:sub(1,j-1) .. ' ' .. l:sub(k+1)
 				found = true
 			end
-		end	
+		end
 		if not found then
 			for key,v in pairs(macros) do
 				if type(v) == 'table' then
@@ -271,7 +330,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined)
 					end
 				else
 					local j,k = l:find(key)
-					if j then 
+					if j and not isInString(l, j, k, checkingIncludeString)  then
 						-- make sure the symbol before and after is not a name character
 						local before = l:sub(j-1,j-1)
 						-- technically no need to match 'after' since the greedy match would have included it, right?
@@ -317,12 +376,12 @@ function Preproc:evalAST(t)
 	elseif t[1] == '~' then
 		assert(#t == 2)
 		-- TODO here we are using ffi's bit lib ...
-		return bit.bnot(castnumber(self:evalAST(t[2]))) 
+		return bit.bnot(castnumber(self:evalAST(t[2])))
 	elseif t[1] == '^' then
 		assert(#t == 3)
 		return bit.bxor(
 			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))) 
+			castnumber(self:evalAST(t[3])))
 	elseif t[1] == '&' then
 		assert(#t == 3)
 		return bit.band(
@@ -379,16 +438,16 @@ function Preproc:evalAST(t)
 		assert(#t == 3)
 		if castnumber(self:evalAST(t[2])) ~= 0
 		and castnumber(self:evalAST(t[3])) ~= 0
-		then 
-			return 1 
+		then
+			return 1
 		end
 		return 0
 	elseif t[1] == '||' then
 		assert(#t == 3)
 		if self:evalAST(t[2]) ~= 0
 		or self:evalAST(t[3]) ~= 0
-		then 
-			return 1 
+		then
+			return 1
 		end
 		return 0
 	elseif t[1] == '==' then
@@ -440,9 +499,9 @@ function Preproc:parseCondInt(origexpr)
 	xpcall(function()
 		local function readnext(pat)
 			local res = expr:sub(col):match('^'..pat)
-			if res then 
+			if res then
 				col = col + #res
-				return res 
+				return res
 			end
 		end
 
@@ -456,8 +515,8 @@ function Preproc:parseCondInt(origexpr)
 		local prev, cur
 		local function next()
 			skipwhitespace()
-			if col > #expr then 
---print('done')				
+			if col > #expr then
+--print('done')
 				cur = ''
 				return cur
 			end
@@ -493,12 +552,12 @@ function Preproc:parseCondInt(origexpr)
 				',',
 			} do
 				local symbol = readnext(pat)
-				if symbol then 
+				if symbol then
 					cur = symbol
---print('cur', cur)					
-					return symbol 
+--print('cur', cur)
+					return symbol
 				end
-			end	
+			end
 
 			error("couldn't understand token here: "..('%q'):format(expr:sub(col)))
 		end
@@ -506,7 +565,7 @@ function Preproc:parseCondInt(origexpr)
 		next()
 
 		local function canbe(pat)
-			if cur:match('^'..pat..'$') then 
+			if cur:match('^'..pat..'$') then
 				prev = cur
 				next()
 				return prev
@@ -540,7 +599,7 @@ function Preproc:parseCondInt(origexpr)
 			elseif canbe'%(' then
 				local node = level1()
 				mustbe'%)'
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return node
 			
 			-- have to handle 'defined' without () because it takes an implicit 1st arg
@@ -584,7 +643,7 @@ function Preproc:parseCondInt(origexpr)
 				local op = prev
 				local b = level11()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -598,7 +657,7 @@ function Preproc:parseCondInt(origexpr)
 				local op = prev
 				local b = level10()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -612,7 +671,7 @@ function Preproc:parseCondInt(origexpr)
 				local op = prev
 				local b = level9()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -628,7 +687,7 @@ function Preproc:parseCondInt(origexpr)
 				local op = prev
 				local b = level8()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -636,13 +695,13 @@ function Preproc:parseCondInt(origexpr)
 
 		local function level7()
 			local a = level8()
-			if canbe'==' 
+			if canbe'=='
 			or canbe'!='
 			then
 				local op = prev
 				local b = level7()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -650,51 +709,51 @@ function Preproc:parseCondInt(origexpr)
 	
 		local function level6()
 			local a = level7()
-			if canbe'&' 
+			if canbe'&'
 			then
 				local op = prev
 				local b = level6()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
-			return a	
+			return a
 		end
 
 		local function level5()
 			local a = level6()
-			if canbe'%^' 
+			if canbe'%^'
 			then
 				local op = prev
 				local b = level5()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
-			return a	
+			return a
 		end
 
 		local function level4()
 			local a = level5()
-			if canbe'|' 
+			if canbe'|'
 			then
 				local op = prev
 				local b = level4()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
-			return a	
+			return a
 		end
 
 		local function level3()
 			local a = level4()
-			if canbe'&&' 	
+			if canbe'&&'
 			then
 				local op = prev
 				local b = level3()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -702,12 +761,12 @@ function Preproc:parseCondInt(origexpr)
 
 		local function level2()
 			local a = level3()
-			if canbe'||' 
+			if canbe'||'
 			then
 				local op = prev
 				local b = level2()
 				local result = {op, a, b}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -722,7 +781,7 @@ function Preproc:parseCondInt(origexpr)
 				mustbe':'
 				local c = level1()
 				local result = {op, a, b, c}
---print('got', tolua(result))				
+--print('got', tolua(result))
 				return result
 			end
 			return a
@@ -738,7 +797,7 @@ function Preproc:parseCondInt(origexpr)
 --print('got cond', cond)
 
 	end, function(err)
-		rethrow = 
+		rethrow =
 			' at col '..col..'\n'
 			..' for orig expr:\n'
 			..origexpr..'\n'
@@ -773,7 +832,7 @@ function Preproc:__call(args)
 
 	self.includeStack = table()
 
-	code = removeCommentsAndApplyContinuations(code)	
+	code = removeCommentsAndApplyContinuations(code)
 	local lines = string.split(code, '\n')
 
 	if args.macros then
@@ -809,7 +868,7 @@ function Preproc:__call(args)
 			l = string.trim(l)	-- trailing space doesn't matter, right?
 			if l:sub(1,1) == '#' then
 				local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
---print('cmd is', cmd, 'rest is', rest)				
+--print('cmd is', cmd, 'rest is', rest)
 				
 				local function closeIf()
 					assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
@@ -824,10 +883,10 @@ function Preproc:__call(args)
 --print('defining with params',k,params,paramdef)
 							
 -- [[ what if we're defining a macro with args?
--- at this point I probably need to use a parser on #if evaluations			
+-- at this point I probably need to use a parser on #if evaluations
 							local paramstr = params
-							params = 
-								paramstr:match'^%s*$' 
+							params =
+								paramstr:match'^%s*$'
 								and table()
 								or string.split(paramstr, ','):mapi(string.trim)
 							for i,param in ipairs(params) do
@@ -895,7 +954,7 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					end
-				elseif cmd == 'if' 
+				elseif cmd == 'if'
 				or cmd == 'elif'
 				then
 					local hasprocessed = false
@@ -906,7 +965,7 @@ function Preproc:__call(args)
 					end
 
 					local cond
-					if cmd == 'elif' 
+					if cmd == 'elif'
 					and hasprocessed
 					then
 						cond = false
@@ -925,21 +984,21 @@ function Preproc:__call(args)
 					assert(rest == '', "found trailing characters after "..cmd)
 					ifstack[#ifstack] = {not hasprocessed, hasprocessed}
 					lines:remove(i)
-					i = i - 1				
+					i = i - 1
 				elseif cmd == 'ifdef' then
 --print('ifdef looking for '..rest)
 					assert(isvalidsymbol(rest))
 					local cond = not not self.macros[rest]
---print('got cond', cond)						
+--print('got cond', cond)
 					ifstack:insert{cond, false}
 					
 					lines:remove(i)
-					i = i - 1			
+					i = i - 1
 				elseif cmd == 'ifndef' then
---print('ifndef looking for', rest)						
+--print('ifndef looking for', rest)
 					assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
-					local cond = not self.macros[rest]						
---print('got cond', cond)						
+					local cond = not self.macros[rest]
+--print('got cond', cond)
 					ifstack:insert{cond, false}
 					
 					lines:remove(i)
@@ -949,7 +1008,7 @@ function Preproc:__call(args)
 					closeIf()
 					ifHandled = nil
 					lines:remove(i)
-					i = i - 1				
+					i = i - 1
 				elseif cmd == 'undef' then
 					assert(isvalidsymbol(rest))
 					self.macros[rest] = nil
@@ -968,18 +1027,21 @@ function Preproc:__call(args)
 					lines:remove(i)
 					i = i - 1
 				elseif cmd == 'include' then
-					local sys = true
-					local fn = rest:match'^<(.*)>$'
-					if not fn then
-						sys = false
-						fn = rest:match'^"(.*)"$'
-					end
-					if not fn then
-						error("include expected file: "..l)
-					end
-					
 					lines:remove(i)
 					if eval then
+						-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
+						rest = self:replaceMacros(rest, nil, true, true)
+
+						local sys = true
+						local fn = rest:match'^<(.*)>$'
+						if not fn then
+							sys = false
+							fn = rest:match'^"(.*)"$'
+						end
+						if not fn then
+							error("include expected file: "..l)
+						end
+					
 						local search = fn
 						fn = self:searchForInclude(fn, sys)
 						if not fn then
@@ -995,12 +1057,12 @@ function Preproc:__call(args)
 							error("couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
 						end
 						if not self.alreadyIncludedFiles[fn] then
---print('include '..fn)							
+--print('include '..fn)
 							lines:insert(i, '/* END '..fn..' */')
 							-- at position i, insert the file
 							local newcode = assert(file[fn], "couldn't find file "..fn)
 
-							newcode = removeCommentsAndApplyContinuations(newcode)	
+							newcode = removeCommentsAndApplyContinuations(newcode)
 							local newlines = string.split(newcode, '\n')
 							
 							while #newlines > 0 do
@@ -1013,21 +1075,24 @@ function Preproc:__call(args)
 					end
 					i = i - 1
 				elseif cmd == 'include_next' then
-					-- same as include .. except use the *next* search path for this file
-					local sys = true
-					local fn = rest:match'^<(.*)>$'
-					if not fn then
-						sys = false
-						fn = rest:match'^"(.*)"$'
-					end
-					if not fn then
-						error("include expected file: "..l)
-					end
-					
 					lines:remove(i)
 					if eval then
+						-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
+						rest = self:replaceMacros(rest, nil, true, true)
+
+						-- same as include .. except use the *next* search path for this file
+						local sys = true
+						local fn = rest:match'^<(.*)>$'
+						if not fn then
+							sys = false
+							fn = rest:match'^"(.*)"$'
+						end
+						if not fn then
+							error("include expected file: "..l)
+						end
+					
 						local search = fn
---print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))						
+--print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
 						-- search through the include stack for the most recent file with the name of what we're looking for ...
 						local foundPrevIncludeDir
 						for i=#self.includeStack,1,-1 do
@@ -1056,12 +1121,12 @@ function Preproc:__call(args)
 							error("couldn't find include file "..search..'\n')
 						end
 						if not self.alreadyIncludedFiles[fn] then
---print('include_next '..fn)							
+--print('include_next '..fn)
 							lines:insert(i, '/* END '..fn..' */')
 							-- at position i, insert the file
 							local newcode = assert(file[fn], "couldn't find file "..fn)
 
-							newcode = removeCommentsAndApplyContinuations(newcode)	
+							newcode = removeCommentsAndApplyContinuations(newcode)
 							local newlines = string.split(newcode, '\n')
 							
 							while #newlines > 0 do
@@ -1098,7 +1163,7 @@ function Preproc:__call(args)
 					if l ~= nl then
 --print('line was', l)
 						lines[i] = nl
---print('line is', l)							
+--print('line is', l)
 					end
 				end
 			end

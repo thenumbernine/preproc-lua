@@ -1,5 +1,5 @@
 #!/usr/bin/env luajit
-local ffi = require 'ffi'
+local ffi = require 'ffi'		-- used for OS check and used for verifying that the generated C headers are luajit-ffi compatible
 local file = require 'ext.file'
 local table = require 'ext.table'
 local string = require 'ext.string'

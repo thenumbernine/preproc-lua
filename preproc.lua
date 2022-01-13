@@ -260,7 +260,7 @@ local function isInString(line, j, k, checkingIncludeString)
 			end
 		end
 	end
---	print('isInString '..line..' '..j..' '..k..' : true')
+--print('isInString '..line..' '..j..' '..k..' : true')
 	return true
 end
 
@@ -1071,6 +1071,7 @@ function Preproc:__call(args)
 							
 							self.includeStack:insert(fn)
 							lines:insert(i, '/* BEGIN '..fn..' */')
+							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ... 
 						end
 					end
 					i = i - 1
@@ -1135,6 +1136,7 @@ function Preproc:__call(args)
 						
 							self.includeStack:insert(fn)
 							lines:insert(i, '/* BEGIN '..fn..' */')
+							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ... 
 						end
 					end
 					i = i - 1

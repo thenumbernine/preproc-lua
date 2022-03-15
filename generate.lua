@@ -142,6 +142,7 @@ end):concat'\n'..'\n')
 print(code)
 
 -- see if there's any errors here
+-- TODO There will almost always be errors if you used -skip, so how about in that case automatically include the luajit of the skipped files?
 --local result = xpcall(function()
 	ffi.cdef(code)
 --end, function(err)

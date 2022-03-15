@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-luajit generate.lua "<pthread.h>" > pthread.h
+luajit generate.lua -skip "<time.h>" "<pthread.h>" > pthread.h

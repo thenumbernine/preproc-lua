@@ -509,8 +509,10 @@ function Preproc:parseCondInt(origexpr)
 			readnext'%s*'
 		end
 
+		local ULhexpat = '0x%x+UL'
+		local ULdecpat = '%d+UL'
+		local hexpat = '0x%x+[LlU]?'
 		local decpat = '%d+[LlU]?'
-		local hexpat = '0x%x+'
 
 		local prev, cur
 		local function next()
@@ -523,6 +525,8 @@ function Preproc:parseCondInt(origexpr)
 
 			for _,pat in ipairs{
 				namepat,
+				ULhexpat,
+				ULdecpat,
 				hexpat,
 				decpat,
 				'&&',
@@ -582,7 +586,21 @@ function Preproc:parseCondInt(origexpr)
 
 		local function level13()
 			-- make sure you match hexpat first
-			if canbe(hexpat)
+			if canbe(ULdecpat)
+			or canbe(ULhexpat)
+			then
+				local dec = prev:match'^(%d+)UL$'
+				local val
+				if dec then
+					val = assert(tonumber(dec), "expected number")	-- decimal number
+				else
+					val = assert(tonumber(prev:match'^(0x%x+)UL$'), "expected number")	-- hex number
+				end
+				assert(val)
+				local result = {'number', val}
+--print('got', tolua(result))
+				return result
+			elseif canbe(hexpat)
 			or canbe(decpat)
 			then
 				local dec = prev:match'^(%d+)[LlU]?$'

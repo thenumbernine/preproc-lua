@@ -21,7 +21,7 @@ if ffi.os == 'Windows' then
 		_MSC_BUILD = '1',
 
 	-- choose which apply:
-			_M_AMD64 = '100',
+		_M_AMD64 = '100',
 		--_M_ARM = '7',
 		--_M_ARM_ARMV7VE = '1',
 		--_M_ARM64 = '1',
@@ -141,12 +141,16 @@ end):concat'\n'..'\n')
 
 print(code)
 
+
+--io.stderr:write('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
+
+
 -- see if there's any errors here
 -- TODO There will almost always be errors if you used -skip, so how about in that case automatically include the luajit of the skipped files?
 --local result = xpcall(function()
 	ffi.cdef(code)
 --end, function(err)
---	io.stderr:write('macros: '..tolua(self.macros)..'\n')
+--	io.stderr:write('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
 --	io.stderr:wrie(err..'\n'..debug.traceback())
 --end)
 --os.exit(result and 0 or 1)

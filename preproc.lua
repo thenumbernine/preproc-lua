@@ -63,12 +63,20 @@ function Preproc:init(args)
 		self(args)
 	end
 	self.macros = {}
+
 	self.alreadyIncludedFiles = {}
 
 	self.sysIncludeDirs = table()
 	self.userIncludeDirs = table()
 
 	self.generatedEnums = {}
+
+
+	-- builtin/default macros?
+	-- here's some for gcc:
+	self:setMacros{__restrict = ''}
+	self:setMacros{__restrict__ = ''}
+
 
 	-- the INCLUDE env var is for <> and not "", right?
 	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ...

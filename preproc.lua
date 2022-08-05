@@ -54,8 +54,8 @@ Preproc(code)
 Preproc(args)
 args = table of:
 	code = code to use
-	sysIncludeDirs = include directories to use for ""
-	userIncludeDirs = include directories to use for <>
+	sysIncludeDirs = include directories to use for <>
+	userIncludeDirs = include directories to use for ""
 	macros = macros to use
 --]]
 function Preproc:init(args)

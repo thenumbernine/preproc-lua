@@ -1024,22 +1024,28 @@ function Preproc:__call(args)
 							if isnumber then
 --print('line was', l)
 								local oldv = self.generatedEnums[k]
+								local setline 
 								if oldv then
 									if oldv ~= v then
 										print('warning: redefining '..k)
 										-- redefine the enum value as well?
 										-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
 									
-										-- [[ insert in-place? this will cause a luajit error
-										lines[i] = 'enum { '..k..' = '..v..' };'
-										--]]
+										setline = true
 									else
 										lines:remove(i)
 										i = i - 1
 									end
 								else
-									-- [[ insert in-place?
-									lines[i] = 'enum { '..k..' = '..v..' };'
+									setline = true
+								end
+								if setline then
+									-- [[ insert in-place? this will cause a luajit error
+									if v:match'%de[+-]%d' then
+										lines[i] = '/* '..l..' */'
+									else
+										lines[i] = 'enum { '..k..' = '..v..' };'
+									end
 									--]]
 								end
 								

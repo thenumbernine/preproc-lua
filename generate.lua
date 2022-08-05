@@ -1,6 +1,5 @@
 #!/usr/bin/env luajit
 local ffi = require 'ffi'		-- used for OS check and used for verifying that the generated C headers are luajit-ffi compatible
-local file = require 'ext.file'
 local table = require 'ext.table'
 local string = require 'ext.string'
 local io = require 'ext.io'
@@ -80,6 +79,11 @@ else	-- assume everything else uses gcc
 #define __has_builtin(x)		0
 #define __has_include(x)		0
 ]]
+
+	-- and this one now too
+	preproc[[
+#define __asm__(x) 
+]]
 end
 
 
@@ -140,6 +144,8 @@ local code = preproc(incfiles:mapi(function(fn)
 end):concat'\n'..'\n')
 
 print(code)
+
+--print('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
 
 
 --io.stderr:write('macros: '..require 'ext.tolua'(preproc.macros)..'\n')

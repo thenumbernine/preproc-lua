@@ -191,8 +191,8 @@ EDABC(x)
 
 		-- because 'defined' is special, skip it, and I guess hope nobody has its arg on a newline (what a mess)
 		if key ~= 'defined' then
---print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
-self.foundIncompleteMacroWarningMessage = "/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */'
+			--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
+			self.foundIncompleteMacroWarningMessage = "/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */'
 			-- ok in this case, how about we store the previous line
 			-- and then include it when processing macros the next time around?
 			-- seems like a horrible hack
@@ -944,6 +944,7 @@ function Preproc:__call(args)
 	-- table of {current condition, any past if's of this block}
 	local ifstack = table()
 	local i = 1
+	local throwme
 	xpcall(function()
 		while i <= #lines do
 			local l = lines[i]
@@ -1294,18 +1295,18 @@ function Preproc:__call(args)
 					self.foundIncompleteMacroLine = nil
 					local origl = l
 					if prevIncompleteMacroLine then
---print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
-lines:insert(i, '/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
-i = i + 1
+						--print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
+						lines:insert(i, '/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
+						i = i + 1
 						l = prevIncompleteMacroLine .. ' ' .. l
 					end
 					
 					local nl = self:replaceMacros(l)
 					if self.foundIncompleteMacroLine then
---print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
-lines:insert(i, self.foundIncompleteMacroWarningMessage)
-self.foundIncompleteMacroWarningMessage = nil
-i = i + 1
+						--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
+						lines:insert(i, self.foundIncompleteMacroWarningMessage)
+						self.foundIncompleteMacroWarningMessage = nil
+						i = i + 1
 
 						--[[
 						lines[i] = '/* '..lines[i]..' */'
@@ -1332,16 +1333,20 @@ i = i + 1
 			i = i + 1
 		end
 	end, function(err)
-		print(require 'template.showcode'(lines:sub(1, i+10):concat'\n'))
+		throwme = table()
+		throwme:insert(require 'template.showcode'(lines:sub(1, i+10):concat'\n'))
 		-- TODO lines should hold the line, the orig line no, and the inc file
 		for _,inc in ipairs(self.includeStack) do
-			print(' at '..inc)
+			throwme:insert(' at '..inc)
 		end
-		print('at line: '..i)
-		print('macros: '..tolua(self.macros))
-		print(err..'\n'..debug.traceback())
-		os.exit(1)
+		throwme:insert('at line: '..i)
+		throwme:insert('macros: '..tolua(self.macros))
+		throwme:insert(err..'\n'..debug.traceback())
+		throwme = throwme:concat'\n'
 	end)
+	if throwme then
+		error(throwme)
+	end
 
 	-- remove \r's
 	lines = lines:mapi(function(l)

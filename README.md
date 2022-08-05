@@ -1,6 +1,9 @@
 my attempt at a C preprocessor in Lua
 useful for luajit ffi cdefs just straight up using the .h files
-depends on my lua-ext lib
+
+Depends on:
+- [lua-ext](https://github.com/thenumbernine/lua-ext)
+- [lua-template](https://github.com/thenumbernine/lua-template)
 
 usage:
 

@@ -1009,6 +1009,12 @@ function Preproc:__call(args)
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --print('defining value',k,v)
+								-- [[ evaluate macros of v?
+								-- and skip previous lines
+								self.foundIncompleteMacroWarningMessage = nil
+								v = self:replaceMacros(v)
+								--]]
+
 								self.macros[k] = v
 							else
 								local k = rest

@@ -59,9 +59,6 @@ args = table of:
 	macros = macros to use
 --]]
 function Preproc:init(args)
-	if args ~= nil then
-		self(args)
-	end
 	self.macros = {}
 
 	self.alreadyIncludedFiles = {}
@@ -71,9 +68,12 @@ function Preproc:init(args)
 
 	self.generatedEnums = {}
 
+	-- custom hook
+	self.includeCallback = args and args.includeCallback or nil
 
 	-- builtin/default macros?
 	-- here's some for gcc:
+	-- TODO move these to outside preproc?
 	self:setMacros{__restrict = ''}
 	self:setMacros{__restrict__ = ''}
 
@@ -85,6 +85,11 @@ function Preproc:init(args)
 	local incenv = os.getenv'INCLUDE'
 	if incenv then
 		self:addIncludeDirs(string.split(incenv, ';'), true)
+	end
+
+
+	if args ~= nil and args.code then
+		self(args)
 	end
 end
 
@@ -951,7 +956,7 @@ function Preproc:__call(args)
 			local popInc = l:match'^/%* END (.*) %*/$'
 			if popInc then
 				local last = self.includeStack:remove()
-				assert(last == popInc, "end of include "..popInc.." vs includeStack "..last)
+				assert(last == popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
 			end
 
 			-- nil = no condition present
@@ -1048,10 +1053,14 @@ function Preproc:__call(args)
 								end
 								if setline then
 									-- [[ insert in-place? this will cause a luajit error
-									if v:match'%de[+-]%d' then
-										lines[i] = '/* '..l..' */'
-									else
+									local nv = tonumber(v)
+									if nv 
+									and not v:match'%.'		-- no floats
+									and not v:match'%de[+-]%d'	-- no exps
+									then
 										lines[i] = 'enum { '..k..' = '..v..' };'
+									else
+										lines[i] = '/* '..l..' */'
 									end
 									--]]
 								end
@@ -1187,8 +1196,20 @@ function Preproc:__call(args)
 						if not self.alreadyIncludedFiles[fn] then
 --print('include '..fn)
 							lines:insert(i, '/* END '..fn..' */')
-							-- at position i, insert the file
-							local newcode = assert(file[fn], "couldn't find file "..fn)
+							
+							
+							-- TODO not sure how I want to do this
+							-- but I want my include-lua project to be able to process certain dependent headers in advance
+							-- though not all ... only ones that are not dependent on the current preproc state (i.e. the system files)
+							-- so this is a delicate mess.
+							local newcode
+							-- TODO instead of a hook, make this a member method, and override it in the subclass
+							if self.includeCallback then
+								newcode = self:includeCallback(search, fn)
+							else
+								-- at position i, insert the file
+								newcode = assert(file[fn], "couldn't find file "..fn)
+							end
 
 							newcode = removeCommentsAndApplyContinuations(newcode)
 							local newlines = string.split(newcode, '\n')

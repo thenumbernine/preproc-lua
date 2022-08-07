@@ -83,11 +83,6 @@ else	-- assume everything else uses gcc
 end
 
 
--- TODO do this externally so this is a more generic tool?
--- maybe some -M argument?
-preproc:setMacros{GL_GLEXT_PROTOTYPES = '1'}
-
-
 -- where I keep my glext.h and khr/khrplatform.h
 -- TODO move this into gl.sh
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', false)
@@ -109,6 +104,13 @@ do
 			-- how to tell sys or not?
 			preproc:addIncludeDir(f:sub(3), true)
 			args:remove(i)
+		elseif f:sub(1,2) == '-M' then
+			local kv = f:sub(3)
+			local k,v = kv:match'^([^=]*)=(.-)$'
+			if not k then
+				k, v = kv, '1'
+			end
+			preproc:setMacros{[k]=v}
 		elseif f == "-skip" then
 			args:remove(i)
 			silentfiles:insert(args:remove(i))

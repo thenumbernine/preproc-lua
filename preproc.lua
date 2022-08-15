@@ -68,15 +68,13 @@ function Preproc:init(args)
 
 	self.generatedEnums = {}
 
-	-- custom hook
-	self.includeCallback = args and args.includeCallback or nil
-
 	-- builtin/default macros?
 	-- here's some for gcc:
 	-- TODO move these to outside preproc?
-	self:setMacros{__restrict = ''}
-	self:setMacros{__restrict__ = ''}
-
+	self:setMacros{
+		__restrict = '',
+		__restrict__ = '',
+	}
 
 	-- the INCLUDE env var is for <> and not "", right?
 	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ...
@@ -87,12 +85,59 @@ function Preproc:init(args)
 		self:addIncludeDirs(string.split(incenv, ';'), true)
 	end
 
-
-	if args ~= nil and args.code then
+	if args ~= nil and (type(args) == 'string' or args.code) then
 		self(args)
 	end
 end
 
+function Preproc:getIncludeFileCode(fn, search)
+	-- at position i, insert the file
+	return assert(file[fn], "couldn't find file "..fn)
+end
+
+function Preproc:getDefineCode(k, v, l)
+	self.macros[k] = v
+	
+	if type(v) == 'string' then	-- exclude the arg-based macros from this -- they will have table values
+		-- if the value string is a number define
+		local isnumber = tonumber(v)	-- TODO also check valid suffixes? l L etc
+		if isnumber then
+--print('line was', l)
+			local replaceline 
+			
+			local oldv = self.generatedEnums[k]
+			if oldv then
+				if oldv ~= v then
+					print('warning: redefining '..k)
+					-- redefine the enum value as well?
+					-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
+				
+					replaceline = true
+				end
+			else
+				replaceline = true
+			end
+			self.generatedEnums[k] = v
+		
+			if replaceline then
+				assert(type(v) == 'string')
+				-- [[ insert in-place? this will cause a luajit error
+				if not v:match'%.'		-- no floats
+				and not v:match'%de[+-]%d'	-- no exps
+				then
+					return 'enum { '..k..' = '..v..' };'
+				else
+					return '/* '..l..' */'
+				end
+				--]]
+			end
+		end
+	end
+		
+	return ''
+end
+
+-- external API.  internal should use 'getDefineCode' for codegen
 function Preproc:setMacros(args)
 	--[[
 	for k,v in pairs(args) do
@@ -192,17 +237,26 @@ EDABC(x)
 
 	local pat = key..'%s*(%b())'
 	local j,k = l:find(pat)
+	 -- if we found KEY
+	 -- but not KEY( ... )
+	 -- but we did find KEY(
+	 -- then ...
 	if not j then 
 
 		-- because 'defined' is special, skip it, and I guess hope nobody has its arg on a newline (what a mess)
 		if key ~= 'defined' then
-			--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
-			self.foundIncompleteMacroWarningMessage = "/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */'
-			-- ok in this case, how about we store the previous line
-			-- and then include it when processing macros the next time around?
-			-- seems like a horrible hack
-			-- just use a tokenizer or something
-			self.foundIncompleteMacroLine = l
+			if l:find(key..'%s*%(') then
+				--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
+				self.foundIncompleteMacroWarningMessage = "/* ### INCOMPLETE ARG MACRO ### "..key
+					..' ### IN LINE ### '
+					..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
+					..' */'
+				-- ok in this case, how about we store the previous line
+				-- and then include it when processing macros the next time around?
+				-- seems like a horrible hack
+				-- just use a tokenizer or something
+				self.foundIncompleteMacroLine = l
+			end
 		end	
 
 		return 
@@ -956,7 +1010,8 @@ function Preproc:__call(args)
 			local popInc = l:match'^/%* END (.*) %*/$'
 			if popInc then
 				local last = self.includeStack:remove()
-				assert(last == popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
+-- TODO in my nested include() this is getting broken
+--				assert(last == popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
 			end
 
 			-- nil = no condition present
@@ -1001,13 +1056,10 @@ function Preproc:__call(args)
 								assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name: "..tostring(param))
 							end
 						
-							self.macros[k] = {
+							lines[i] = self:getDefineCode(k, {
 								params = params,
 								def = paramdef,
-							}
-								
-							lines:remove(i)
-							i = i - 1
+							}, l)
 						else
 						
 							local k, v = rest:match'^(%S+)%s+(.-)$'
@@ -1019,73 +1071,19 @@ function Preproc:__call(args)
 								self.foundIncompleteMacroWarningMessage = nil
 								v = self:replaceMacros(v)
 								--]]
-
-								self.macros[k] = v
 							else
-								local k = rest
+								k = rest
 								v = ''
 								assert(k ~= '', "couldn't find what you were defining: "..l)
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 								
 --print('defining empty',k,v)
-								self.macros[k] = v
 							end
-						
-							--if it is a number define
-							local isnumber = tonumber(v)	-- TODO also check valid suffixes?
-							if isnumber then
---print('line was', l)
-								local oldv = self.generatedEnums[k]
-								local setline 
-								if oldv then
-									if oldv ~= v then
-										print('warning: redefining '..k)
-										-- redefine the enum value as well?
-										-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
-									
-										setline = true
-									else
-										lines:remove(i)
-										i = i - 1
-									end
-								else
-									setline = true
-								end
-								if setline then
-									-- [[ insert in-place? this will cause a luajit error
-									local nv = tonumber(v)
-									if nv 
-									and not v:match'%.'		-- no floats
-									and not v:match'%de[+-]%d'	-- no exps
-									then
-										lines[i] = 'enum { '..k..' = '..v..' };'
-									else
-										lines[i] = '/* '..l..' */'
-									end
-									--]]
-								end
-								
-								self.generatedEnums[k] = v
-								--[[ remove now and insert at the end?
-								lines:remove(i)
-								i = i - 1
-								--]]
+							
+							--TODO lines[i] = ...
+							-- and then incorporate the enim {} into the code
+							lines[i] = self:getDefineCode(k, v, l)
 --print('line is', l)
-							else
-								-- macros don't get eval'd until they are used
-								-- but to replace them with enums maens evaluating them immediately
-								-- ... or it means saving track fo the linenos of all the original defines and then evaluating them last and going back and replacing them
-								-- hmmm
-								-- but for now, just replace define with enum on immediate values
-								--[[
-								l = "// couldn't convert "..l
-								lines[i] = l
-								--]]
-								-- [[
-								lines:remove(i)
-								i = i - 1
-								--]]
-							end
 						end
 					else
 						lines:remove(i)
@@ -1148,9 +1146,16 @@ function Preproc:__call(args)
 					i = i - 1
 				elseif cmd == 'undef' then
 					assert(isvalidsymbol(rest))
+					
+					--[[
 					self.macros[rest] = nil
 					lines:remove(i)
 					i = i - 1
+					--]]
+					-- [[
+					lines[i] = self:getDefineCode(rest, nil, l)
+					--]]
+				
 				elseif cmd == 'error' then
 					if eval then
 						error(rest)
@@ -1202,15 +1207,8 @@ function Preproc:__call(args)
 							-- but I want my include-lua project to be able to process certain dependent headers in advance
 							-- though not all ... only ones that are not dependent on the current preproc state (i.e. the system files)
 							-- so this is a delicate mess.
-							local newcode
-							-- TODO instead of a hook, make this a member method, and override it in the subclass
-							if self.includeCallback then
-								newcode = self:includeCallback(search, fn)
-							else
-								-- at position i, insert the file
-								newcode = assert(file[fn], "couldn't find file "..fn)
-							end
-
+							local newcode = self:getIncludeFileCode(fn, search)
+							
 							newcode = removeCommentsAndApplyContinuations(newcode)
 							local newlines = string.split(newcode, '\n')
 							
@@ -1323,7 +1321,11 @@ function Preproc:__call(args)
 					local origl = l
 					if prevIncompleteMacroLine then
 						--print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
-						lines:insert(i, '/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
+						lines:insert(i, '/* ### PREPENDING ### ' 
+							..prevIncompleteMacroLine:gsub('/%*', '/ *'):gsub('%*/', '* /')
+							.. ' ### TO ### ' 
+							..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
+							..' */')
 						i = i + 1
 						l = prevIncompleteMacroLine .. ' ' .. l
 					end
@@ -1397,11 +1399,14 @@ function Preproc:__call(args)
 
 	-- [[ join lines that don't end in a semicolon or comment
 	for i=#lines,1,-1 do
-		if lines[i]:sub(-1) ~= ';'
-		and lines[i]:sub(-2) ~= '*/'
-		and (i == #lines or lines[i+1]:sub(1,2) ~= '/*')
-		then
-			lines[i] = lines[i] .. ' ' .. lines:remove(i+1)
+		if lines[i]:sub(-2) ~= '*/' then
+			lines[i] = lines[i]:gsub('%s+', ' ')
+			if lines[i]:sub(-1) ~= ';'
+			and (i == #lines or lines[i+1]:sub(1,2) ~= '/*')
+			then
+				lines[i] = lines[i] .. ' ' .. lines:remove(i+1)
+			end
+			lines[i] = lines[i]:gsub('%s*;$', ';')
 		end
 	end
 	--]]

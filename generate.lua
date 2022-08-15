@@ -104,13 +104,14 @@ do
 			-- how to tell sys or not?
 			preproc:addIncludeDir(f:sub(3), true)
 			args:remove(i)
-		elseif f:sub(1,2) == '-M' then
+		elseif f:sub(1,2) == '-D' then
 			local kv = f:sub(3)
 			local k,v = kv:match'^([^=]*)=(.-)$'
 			if not k then
 				k, v = kv, '1'
 			end
 			preproc:setMacros{[k]=v}
+			args:remove(i)
 		elseif f == "-skip" then
 			args:remove(i)
 			silentfiles:insert(args:remove(i))

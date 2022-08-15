@@ -3,4 +3,4 @@
 #-skip "<unistd.h>" 
 # add -DH5_SIZEOF_SSIZE_T=0
 #-skip "<features.h>" -skip "<sys/types.h>" -skip "<limits.h>" -skip "<stdarg.h>" -skip "<stddef.h>" -skip "<stdlib.h>" -skip "<stdint.h>" -skip "<inttypes.h>" -skip "<stdio.h>" 
-luajit generate.lua -skip "<stdio.h>" `pkg-config --cflags-only-I hdf5` "<hdf5.h>" > hdf5.h
+luajit generate.lua -skip "<stdio.h>" `pkg-config --cflags hdf5` "<hdf5.h>" > hdf5.h

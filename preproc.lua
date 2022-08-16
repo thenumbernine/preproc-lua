@@ -96,9 +96,22 @@ function Preproc:getIncludeFileCode(fn, search)
 end
 
 function Preproc:getDefineCode(k, v, l)
+--print('getDefineCode setting '..k..' to '..tolua(v))	
 	self.macros[k] = v
 	
 	if type(v) == 'string' then	-- exclude the arg-based macros from this -- they will have table values
+		
+		-- try to evaluate the value
+		-- TODO will this mess with incomplete macros
+		--v = self:replaceMacros(v)
+	
+		-- ok if it's a preprocessor expression then we need it evaluated
+		-- but it could be a non-preproc expression as well, in which case maybe it's a float?
+		pcall(function()
+			v = ''..self:parseCondInt(v)
+			-- parseCondExpr returns bool
+		end)
+
 		-- if the value string is a number define
 		local isnumber = tonumber(v)	-- TODO also check valid suffixes? l L etc
 		if isnumber then
@@ -113,6 +126,8 @@ function Preproc:getDefineCode(k, v, l)
 					-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
 				
 					replaceline = true
+				else
+					return '/* redefining matching value: '..l..' */'
 				end
 			else
 				replaceline = true
@@ -127,11 +142,24 @@ function Preproc:getDefineCode(k, v, l)
 				then
 					return 'enum { '..k..' = '..v..' };'
 				else
-					return '/* '..l..' */'
+					return '/* '..l..' ### string, number, replaceline '..tolua(v)..' */'
 				end
 				--]]
+			else
+				return '/* '..l..' ### string, number, not replaceline '..tolua(v)..' */'
+			end
+		else
+			-- string but not number ...
+			if v == '' then
+				return 'enum { '..k..' = 1 };'
+			else			
+				return '/* '..l..' ### string, not number '..tolua(v)..' */'
 			end
 		end
+	-- otherwise if not a string then it's a macro with args or nil
+	else 
+-- non-strings are most likely nil for undef or tables for arg macros
+--		return '/* '..l..' ### '..tolua(v, {indent=false})..' */'
 	end
 		
 	return ''
@@ -146,6 +174,7 @@ function Preproc:setMacros(args)
 	for _,k in ipairs(table.keys(args):sort()) do
 		local v = args[k]
 	--]]
+--print('setMacros setting '..k..' to '..tolua(v))	
 		self.macros[k] = v
 	end
 end
@@ -387,6 +416,7 @@ in the latest stdio.h there is a multiple-line-spanning-macro, so I can't get ar
 and that also might mean I need a tokenizer of some sort, to know when the parenthesis arguments begin and end
 --]]
 function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
+--print('replaceMacros begin: '..l)	
 	macros = macros or self.macros
 	local found
 	repeat
@@ -396,7 +426,10 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 			local j, k, paramMap = self:handleMacroWithArgs(l, 'defined', {'x'})
 			if j then
 				local query = paramMap.x
+--print('defined() querying '..query)				
 				local def = macros[query] and 1 or 0
+--print('self.macros[query] = '..tolua(self.macros[query]))
+--print('macros[query] = '..def)
 --local oldl = l					
 				l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
 --print('from', oldl, 'to', l)					
@@ -498,6 +531,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 			end
 		end
 	until not found
+--print('replaceMacros done: '..l)	
 	return l
 end
 
@@ -628,13 +662,12 @@ function Preproc:parseCondInt(origexpr)
 	local expr = origexpr
 	
 	assert(expr)
-	--print('evaluating condition:', expr)
-
+--print('evaluating condition:', expr)
 	-- does defined() work with macros with args?
 	-- if not then substitute macros with args here
 	-- if so then substitute it in the eval of macros later ...
 	expr = self:replaceMacros(expr, nil, true)
-	--print('after macros:', expr)
+--print('after macros:', expr)
 
 	local col = 1
 	local cond
@@ -1069,14 +1102,14 @@ function Preproc:__call(args)
 								-- [[ evaluate macros of v?
 								-- and skip previous lines
 								self.foundIncompleteMacroWarningMessage = nil
-								v = self:replaceMacros(v)
+								--v = self:replaceMacros(v)
+								-- no, that'll be done in getDefineCode (right?()
 								--]]
 							else
 								k = rest
 								v = ''
 								assert(k ~= '', "couldn't find what you were defining: "..l)
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
-								
 --print('defining empty',k,v)
 							end
 							
@@ -1146,16 +1179,19 @@ function Preproc:__call(args)
 					i = i - 1
 				elseif cmd == 'undef' then
 					assert(isvalidsymbol(rest))
-					
-					--[[
-					self.macros[rest] = nil
-					lines:remove(i)
-					i = i - 1
-					--]]
-					-- [[
-					lines[i] = self:getDefineCode(rest, nil, l)
-					--]]
-				
+					if eval then
+						--[[
+						self.macros[rest] = nil
+						lines:remove(i)
+						i = i - 1
+						--]]
+						-- [[
+						lines[i] = self:getDefineCode(rest, nil, l)
+						--]]
+					else
+						lines:remove(i)
+						i = i - 1
+					end
 				elseif cmd == 'error' then
 					if eval then
 						error(rest)
@@ -1296,10 +1332,15 @@ function Preproc:__call(args)
 								local last = self.includeStack:last()
 								self.alreadyIncludedFiles[last] = true
 							end
+							lines:remove(i)
+							i = i - 1
+						else
+							lines[i] = '/* '..lines[i]..' */'
 						end
+					else
+						lines:remove(i)
+						i = i - 1
 					end
-					lines:remove(i)
-					i = i - 1
 				else
 					error("can't handle that preprocessor yet: "..l)
 				end

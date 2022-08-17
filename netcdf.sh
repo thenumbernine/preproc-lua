@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-luajit generate.lua -skip "<stddef.h>" `pkg-config --cflags netcdf` "<netcdf.h>" > netcdf.h
+#-skip "<stddef.h>" 
+luajit generate.lua `pkg-config --cflags netcdf` "<netcdf.h>" > netcdf.h

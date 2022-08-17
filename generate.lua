@@ -85,7 +85,7 @@ end
 
 -- where I keep my glext.h and khr/khrplatform.h
 -- TODO move this into gl.sh
-preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', false)
+preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', ffi.os == 'Windows')
 preproc:addIncludeDir('.', false)	-- cwd?
 
 --[[

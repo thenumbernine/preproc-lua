@@ -65,3 +65,7 @@ processing multiple files retains the state of .macros and .alreadyIncludedFiles
 the call() operator returns the last file processed.
 
 TODO should .code hold the last file processed, or the total files processed?
+
+TODO If I'm in the middle of a typedef or enum or something with {}'s, I should wait to insert the #define => enum{} code.  (pthread.h)
+
+TODO if you have a number value like enum {A = 0}; then do recursive def #define A A, which because it's a number value is turned into an enum, then this will still insert that second enum.  (pthread.h)

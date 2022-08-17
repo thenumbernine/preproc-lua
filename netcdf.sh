@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
-#-skip "<stddef.h>" 
+# apt install libnetcdf-dev
 luajit generate.lua `pkg-config --cflags netcdf` "<netcdf.h>" > netcdf.h

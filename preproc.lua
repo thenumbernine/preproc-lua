@@ -18,9 +18,11 @@ local function removeCommentsAndApplyContinuations(code)
 	-- if so then do this here
 	-- or should they not?  then do this after.
 	repeat
-		local i, j = code:find('\\%s*\n')
+		local i, j = code:find('\\\n')
 		if not i then break end
+--print('was', tolua(code))
 		code = code:sub(1,i-1)..' '..code:sub(j+1)
+--print('is', tolua(code))
 	until false
 
 	-- remove all /* */ blocks first
@@ -31,7 +33,9 @@ local function removeCommentsAndApplyContinuations(code)
 		if not j then
 			error("found /* with no */")
 		end
+--print('was', tolua(code))
 		code = code:sub(1,i-1)..code:sub(j+2)
+--print('is', tolua(code))
 	until false
 
 	-- [[ remove all // \n blocks first
@@ -39,7 +43,9 @@ local function removeCommentsAndApplyContinuations(code)
 		local i = code:find('//',1,true)
 		if not i then break end
 		local j = code:find('\n',i+2,true) or #code
+--print('was', tolua(code))
 		code = code:sub(1,i-1)..code:sub(j)
+--print('is', tolua(code))
 	until false
 	--]]
 
@@ -1147,6 +1153,7 @@ function Preproc:__call(args)
 					lines:remove(i)
 					i = i - 1
 				elseif cmd == 'else' then
+					assert(#ifstack > 0, "found an #else without an #if")
 					local oldcond = ifstack:last()
 					local hasprocessed = oldcond[1] or oldcond[2]
 					assert(rest == '', "found trailing characters after "..cmd)

@@ -88,7 +88,8 @@ end
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', ffi.os == 'Windows')
 
 -- cwd? no, this just risks the generated file geeting included mid-generation.
---preproc:addIncludeDir('.', false)	
+-- but for testing I enable it ... with -I.
+--preproc:addIncludeDir('.', false)
 
 --[[
 args:

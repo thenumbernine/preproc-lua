@@ -121,6 +121,9 @@ function Preproc:getDefineCode(k, v, l)
 		-- if the value string is a number define
 		local isnumber = tonumber(v)	-- TODO also check valid suffixes? l L etc
 		if isnumber then
+			-- ok Lua tonumber hack ... 
+			-- tonumber'0x10' converts from base 16 ..
+			-- tonumber'010' converts from base 10 *NOT* base 8 ...
 --print('line was', l)
 			local replaceline
 			
@@ -541,18 +544,35 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 	return l
 end
 
+local function cliteralintegertonumber(x)
+	-- ok Lua tonumber hack ... 
+	-- tonumber'0x10' converts from base 16 ..
+	-- tonumber'010' converts from base 10 *NOT* base 8 ...
+	-- and because now i'm using macro-evaluation to convert my #define's into enum {} 's ...
+	-- it's important here
+	local n = tonumber(x)
+	if not n then return nil end
+	-- if it's really base 8 then lua will interpret it (successfully) as base-10
+	if type(x) == 'string' and x:sub(1,1) == '0' then
+		n = tonumber(x, 8)
+	end
+	return n
+end
+
 local function castnumber(x)
 	if x == nil then return 0 end
 	if x == false then return 0 end
 	if x == true then return 1 end
-	return (assert(tonumber(x), "couldn't cast to number: "..x))
+	local n = cliteralintegertonumber(x)
+	if not n then error("couldn't cast to number: "..x) end
+	return n
 end
 
 -- now to evalute the tree
 function Preproc:evalAST(t)
 	if t[1] == 'number' then
 		assert(#t == 2)
-		return assert(tonumber(t[2]), "failed to parse number "..tostring(t[2]))
+		return assert(cliteralintegertonumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
 		assert(#t == 2)
 		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
@@ -774,9 +794,9 @@ function Preproc:parseCondInt(origexpr)
 				local dec = prev:match'^(%d+)UL$'
 				local val
 				if dec then
-					val = assert(tonumber(dec), "expected number")	-- decimal number
+					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
 				else
-					val = assert(tonumber(prev:match'^(0x%x+)UL$'), "expected number")	-- hex number
+					val = assert(cliteralintegertonumber(prev:match'^(0x%x+)UL$'), "expected number")	-- hex number
 				end
 				assert(val)
 				local result = {'number', val}
@@ -788,9 +808,9 @@ function Preproc:parseCondInt(origexpr)
 				local dec = prev:match'^(%d+)[LlU]?$'
 				local val
 				if dec then
-					val = assert(tonumber(dec), "expected number")	-- decimal number
+					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
 				else
-					val = assert(tonumber(prev), "expected number")	-- hex number
+					val = assert(cliteralintegertonumber(prev), "expected number")	-- hex number
 				end
 				assert(val)
 				local result = {'number', val}

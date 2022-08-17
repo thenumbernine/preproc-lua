@@ -84,9 +84,11 @@ end
 
 
 -- where I keep my glext.h and khr/khrplatform.h
--- TODO move this into gl.sh
+-- TODO move this into gl.sh?
 preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', ffi.os == 'Windows')
-preproc:addIncludeDir('.', false)	-- cwd?
+
+-- cwd? no, this just risks the generated file geeting included mid-generation.
+--preproc:addIncludeDir('.', false)	
 
 --[[
 args:

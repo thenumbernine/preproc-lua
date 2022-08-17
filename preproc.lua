@@ -96,7 +96,7 @@ function Preproc:getIncludeFileCode(fn, search)
 end
 
 function Preproc:getDefineCode(k, v, l)
---print('getDefineCode setting '..k..' to '..tolua(v))	
+--print('getDefineCode setting '..k..' to '..tolua(v))
 	self.macros[k] = v
 	
 	if type(v) == 'string' then	-- exclude the arg-based macros from this -- they will have table values
@@ -116,7 +116,7 @@ function Preproc:getDefineCode(k, v, l)
 		local isnumber = tonumber(v)	-- TODO also check valid suffixes? l L etc
 		if isnumber then
 --print('line was', l)
-			local replaceline 
+			local replaceline
 			
 			local oldv = self.generatedEnums[k]
 			if oldv then
@@ -152,12 +152,12 @@ function Preproc:getDefineCode(k, v, l)
 			-- string but not number ...
 			if v == '' then
 				return 'enum { '..k..' = 1 };'
-			else			
+			else
 				return '/* '..l..' ### string, not number '..tolua(v)..' */'
 			end
 		end
 	-- otherwise if not a string then it's a macro with args or nil
-	else 
+	else
 -- non-strings are most likely nil for undef or tables for arg macros
 --		return '/* '..l..' ### '..tolua(v, {indent=false})..' */'
 	end
@@ -174,7 +174,7 @@ function Preproc:setMacros(args)
 	for _,k in ipairs(table.keys(args):sort()) do
 		local v = args[k]
 	--]]
---print('setMacros setting '..k..' to '..tolua(v))	
+--print('setMacros setting '..k..' to '..tolua(v))
 		self.macros[k] = v
 	end
 end
@@ -243,7 +243,7 @@ function Preproc:handleMacroWithArgs(l, key, vparams)
 	-- TODO multiline support
 	-- look for 'key' whatsoever
 	-- if we find it then switch to start expecting that opening parenthesis
-	-- and then tokenize or something.  
+	-- and then tokenize or something.
 
 	local keyj,keyk = l:find(key)
 	if not keyj then return end
@@ -255,11 +255,11 @@ function Preproc:handleMacroWithArgs(l, key, vparams)
 	then
 		--[[
 		-- not a proper key , just a substring of one
-		-- TODO won't this skip some macros .. like if we have 
+		-- TODO won't this skip some macros .. like if we have
 #define ABC ( x )
 #define EDABC ( x )
 		and then we do
-EDABC(x) 
+EDABC(x)
 		--]]
 		return
 	end
@@ -270,7 +270,7 @@ EDABC(x)
 	 -- but not KEY( ... )
 	 -- but we did find KEY(
 	 -- then ...
-	if not j then 
+	if not j then
 
 		-- because 'defined' is special, skip it, and I guess hope nobody has its arg on a newline (what a mess)
 		if key ~= 'defined' then
@@ -286,14 +286,14 @@ EDABC(x)
 				-- just use a tokenizer or something
 				self.foundIncompleteMacroLine = l
 			end
-		end	
+		end
 
-		return 
+		return
 	end
 
 	local before = l:sub(j-1,j-1)
-	if before:match'[_a-zA-Z0-9]' then 
-		return 
+	if before:match'[_a-zA-Z0-9]' then
+		return
 	end
 
 --print('found macro', key)
@@ -416,7 +416,7 @@ in the latest stdio.h there is a multiple-line-spanning-macro, so I can't get ar
 and that also might mean I need a tokenizer of some sort, to know when the parenthesis arguments begin and end
 --]]
 function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
---print('replaceMacros begin: '..l)	
+--print('replaceMacros begin: '..l)
 	macros = macros or self.macros
 	local found
 	repeat
@@ -426,13 +426,13 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 			local j, k, paramMap = self:handleMacroWithArgs(l, 'defined', {'x'})
 			if j then
 				local query = paramMap.x
---print('defined() querying '..query)				
+--print('defined() querying '..query)
 				local def = macros[query] and 1 or 0
 --print('self.macros[query] = '..tolua(self.macros[query]))
 --print('macros[query] = '..def)
---local oldl = l					
+--local oldl = l
 				l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
---print('from', oldl, 'to', l)					
+--print('from', oldl, 'to', l)
 				found = true
 			else
 				-- whoever made the spec for the c preprocessor ... smh
@@ -440,9 +440,9 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 				local j, k, query = l:find('defined%s+('..namepat..')')
 				if j and not isInString(l, j, k, checkingIncludeString) then
 					local def = macros[query] and 1 or 0
---local oldl = l					
+--local oldl = l
 					l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
---print('from', oldl, 'to', l)					
+--print('from', oldl, 'to', l)
 					found = true
 				end
 			end
@@ -456,9 +456,9 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 				-- _Pragma (#GCC diagnostic push)
 				-- when I should be getting
 				--_Pragma ("GCC diagnostic push")
---local oldl = l					
+--local oldl = l
 				l = l:sub(1,j-1) .. ' ' .. l:sub(k+1)
---print('from', oldl, 'to', l)					
+--print('from', oldl, 'to', l)
 				found = true
 			end
 		end
@@ -488,10 +488,10 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 						--]]
 						local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
 						def = def:gsub('##', concatMarker)
---local oldl = l					
+--local oldl = l
 						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
 						l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
---print('from', oldl, 'to', l)					
+--print('from', oldl, 'to', l)
 						-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
 						--if l ~= origl then
 							found = true
@@ -517,9 +517,9 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 							-- and replace all the instances of v's params in v'def with the values in those parenthesis
 
 							-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
---local oldl = l					
+--local oldl = l
 							l = l:sub(1,j-1) .. v .. l:sub(k+1)
---print('from', oldl, 'to', l)					
+--print('from', oldl, 'to', l)
 							-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
 							--if l ~= origl then
 								found = true
@@ -531,7 +531,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 			end
 		end
 	until not found
---print('replaceMacros done: '..l)	
+--print('replaceMacros done: '..l)
 	return l
 end
 
@@ -1254,7 +1254,7 @@ function Preproc:__call(args)
 							
 							self.includeStack:insert(fn)
 							lines:insert(i, '/* BEGIN '..fn..' */')
-							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ... 
+							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
 						end
 					end
 					i = i - 1
@@ -1319,7 +1319,7 @@ function Preproc:__call(args)
 						
 							self.includeStack:insert(fn)
 							lines:insert(i, '/* BEGIN '..fn..' */')
-							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ... 
+							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
 						end
 					end
 					i = i - 1
@@ -1362,9 +1362,9 @@ function Preproc:__call(args)
 					local origl = l
 					if prevIncompleteMacroLine then
 						--print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
-						lines:insert(i, '/* ### PREPENDING ### ' 
+						lines:insert(i, '/* ### PREPENDING ### '
 							..prevIncompleteMacroLine:gsub('/%*', '/ *'):gsub('%*/', '* /')
-							.. ' ### TO ### ' 
+							.. ' ### TO ### '
 							..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
 							..' */')
 						i = i + 1
@@ -1397,7 +1397,7 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					end
---]]				
+--]]
 				end
 			end
 			i = i + 1
@@ -1429,7 +1429,7 @@ function Preproc:__call(args)
 
 	-- merge all into one string
 	-- then replace all on the whole string
-	-- TODO should I worry about #include injection of code and macro args order of evaluation 
+	-- TODO should I worry about #include injection of code and macro args order of evaluation
 	--[[
 	io.stderr:write('begin replacing ', self.includeStack:last() or 'nil', '\n')
 	io.stderr:flush()

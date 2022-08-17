@@ -553,7 +553,9 @@ local function cliteralintegertonumber(x)
 	local n = tonumber(x)
 	if not n then return nil end
 	-- if it's really base 8 then lua will interpret it (successfully) as base-10
-	if type(x) == 'string' and x:sub(1,1) == '0' then
+	if type(x) == 'string' 
+	and x:match'^0%d'
+	then
 		n = tonumber(x, 8)
 	end
 	return n

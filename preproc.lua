@@ -497,14 +497,14 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 						--]]
 						local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
 						def = def:gsub('##', concatMarker)
---local oldl = l
+						local origl = l
 						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
 						l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
---print('from', oldl, 'to', l)
+--print('from', origl, 'to', l)
 						-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-						--if l ~= origl then
+						if l ~= origl then
 							found = true
-						--end
+						end
 						break
 					end
 				else
@@ -526,13 +526,13 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 							-- and replace all the instances of v's params in v'def with the values in those parenthesis
 
 							-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
---local oldl = l
+							local origl = l
 							l = l:sub(1,j-1) .. v .. l:sub(k+1)
---print('from', oldl, 'to', l)
+--print('from', origl, 'to', l)
 							-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-							--if l ~= origl then
+							if l ~= origl then
 								found = true
-							--end
+							end
 							break
 						end
 					end

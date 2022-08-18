@@ -427,6 +427,8 @@ and that also might mean I need a tokenizer of some sort, to know when the paren
 function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 --print('replaceMacros begin: '..l)
 	macros = macros or self.macros
+	-- avoid infinite-recursive macros
+	local alreadyReplaced = {}
 	local found
 	repeat
 		found = nil
@@ -477,63 +479,68 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 			--]]
 			-- [[
 			for _,key in ipairs(table.keys(macros):sort()) do
-				local v = macros[key]
-			--]]
+				if not alreadyReplaced[key] then
+					local v = macros[key]
+				--]]
 
-				-- handle macro with args
-				if type(v) == 'table' then
-					local j, k, paramMap = self:handleMacroWithArgs(l, key, v.params)
-					if j then
+					-- handle macro with args
+					if type(v) == 'table' then
+						local j, k, paramMap = self:handleMacroWithArgs(l, key, v.params)
+						if j then
 --print('replacing with params', tolua(v))
-						-- now replace all of v.params strings with params
-						local def = self:replaceMacros(v.def, paramMap, alsoDefined)
-						--[[
-						TODO space or nospace?
-						nospace = good for ## operator
-						space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
-							gcc stdint.h:
-							#define __GLIBC_USE(F)	__GLIBC_USE_ ## F
-						I guess this is helping me make up my mind
-						--]]
-						local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
-						def = def:gsub('##', concatMarker)
-						local origl = l
-						l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
-						l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
---print('from', origl, 'to', l)
-						-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-						if l ~= origl then
-							found = true
-						end
-						break
-					end
-				else
-					-- handle macro without args
-					local j,k = l:find(key)
-					if j and not isInString(l, j, k, checkingIncludeString)  then
-						-- make sure the symbol before and after is not a name character
-						local before = l:sub(j-1,j-1)
-						-- technically no need to match 'after' since the greedy match would have included it, right?
-						-- same for 'before' ?
-						local after = l:sub(k+1,k+1)
-						if not before:match'[_a-zA-Z0-9]'
-						and not after:match'[_a-zA-Z0-9]'
-						then
---print('found macro', key)
---print('replacing with', v)
-							
-							-- if the macro has params then expect a parenthesis after k
-							-- and replace all the instances of v's params in v'def with the values in those parenthesis
-
-							-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
+							-- now replace all of v.params strings with params
+							local def = self:replaceMacros(v.def, paramMap, alsoDefined)
+							--[[
+							TODO space or nospace?
+							nospace = good for ## operator
+							space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
+								gcc stdint.h:
+								#define __GLIBC_USE(F)	__GLIBC_USE_ ## F
+							I guess this is helping me make up my mind
+							--]]
+							local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
+							def = def:gsub('##', concatMarker)
 							local origl = l
-							l = l:sub(1,j-1) .. v .. l:sub(k+1)
+							l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
+							l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
 --print('from', origl, 'to', l)
 							-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
 							if l ~= origl then
 								found = true
 							end
 							break
+						end
+					else
+						-- handle macro without args
+						local j,k = l:find(key)
+						if j and not isInString(l, j, k, checkingIncludeString)  then
+							-- make sure the symbol before and after is not a name character
+							local before = l:sub(j-1,j-1)
+							-- technically no need to match 'after' since the greedy match would have included it, right?
+							-- same for 'before' ?
+							local after = l:sub(k+1,k+1)
+							if not before:match'[_a-zA-Z0-9]'
+							and not after:match'[_a-zA-Z0-9]'
+							then
+--print('found macro', key)
+--print('replacing with', v)
+								-- if the macro has params then expect a parenthesis after k
+								-- and replace all the instances of v's params in v'def with the values in those parenthesis
+
+								-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
+								--local origl = l
+								l = l:sub(1,j-1) .. v .. l:sub(k+1)
+--print('from', origl, 'to', l)
+								-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
+								if l ~= origl then
+									found = true
+								end
+								-- but this won't stop if you have #define x A.x ... in which case you could still get stuck in a loop
+								-- instead I gotta make it so it just doesn't expand a second time
+								-- TODO do this for parameter-based macros also? #define x(y) A.x(y+1) ?
+								alreadyReplaced[key] = true
+								break
+							end
 						end
 					end
 				end

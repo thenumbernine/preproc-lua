@@ -722,6 +722,8 @@ function Preproc:parseCondInt(origexpr)
 
 		local ULhexpat = '0x%x+UL'
 		local ULdecpat = '%d+UL'
+		local LLhexpat = '0x%x+LL'
+		local LLdecpat = '%d+LL'
 		local hexpat = '0x%x+[LlU]?'
 		local decpat = '%d+[LlU]?'
 
@@ -738,6 +740,8 @@ function Preproc:parseCondInt(origexpr)
 				namepat,
 				ULhexpat,
 				ULdecpat,
+				LLhexpat,
+				LLdecpat,
 				hexpat,
 				decpat,
 				'&&',
@@ -811,6 +815,20 @@ function Preproc:parseCondInt(origexpr)
 				local result = {'number', val}
 --print('got', tolua(result))
 				return result
+			elseif canbe(LLdecpat)
+			or canbe(LLhexpat)
+			then
+				local dec = prev:match'^(%d+)LL$'
+				local val
+				if dec then
+					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
+				else
+					val = assert(cliteralintegertonumber(prev:match'^(0x%x+)LL$'), "expected number")	-- hex number
+				end
+				assert(val)
+				local result = {'number', val}
+--print('got', tolua(result))
+				return result
 			elseif canbe(hexpat)
 			or canbe(decpat)
 			then
@@ -819,7 +837,10 @@ function Preproc:parseCondInt(origexpr)
 				if dec then
 					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
 				else
-					val = assert(cliteralintegertonumber(prev), "expected number")	-- hex number
+					val = cliteralintegertonumber(prev:match'^(0x%x+)[LlU]?$')
+					if not val then
+						error("expected number from "..prev)	-- hex number
+					end
 				end
 				assert(val)
 				local result = {'number', val}

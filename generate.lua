@@ -78,6 +78,7 @@ else	-- assume everything else uses gcc
 #define __has_c_attribute(x)	0
 #define __has_builtin(x)		0
 #define __has_include(x)		0
+#define __has_warning(x)		0
 #define __asm__(x) 
 ]]
 end

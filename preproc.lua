@@ -55,6 +55,9 @@ end
 
 local Preproc = class()
 
+-- whether, as a final pass, we combine non-semicolon lines
+Preproc.joinNonSemicolonLines = true
+
 --[[
 Preproc(code)
 Preproc(args)
@@ -1496,15 +1499,17 @@ function Preproc:__call(args)
 	--]]
 
 	-- [[ join lines that don't end in a semicolon or comment
-	for i=#lines,1,-1 do
-		if lines[i]:sub(-2) ~= '*/' then
-			lines[i] = lines[i]:gsub('%s+', ' ')
-			if lines[i]:sub(-1) ~= ';'
-			and (i == #lines or lines[i+1]:sub(1,2) ~= '/*')
-			then
-				lines[i] = lines[i] .. ' ' .. lines:remove(i+1)
+	if self.joinNonSemicolonLines then
+		for i=#lines,1,-1 do
+			if lines[i]:sub(-2) ~= '*/' then
+				lines[i] = lines[i]:gsub('%s+', ' ')
+				if lines[i]:sub(-1) ~= ';'
+				and (i == #lines or lines[i+1]:sub(1,2) ~= '/*')
+				then
+					lines[i] = lines[i] .. ' ' .. lines:remove(i+1)
+				end
+				lines[i] = lines[i]:gsub('%s*;$', ';')
 			end
-			lines[i] = lines[i]:gsub('%s*;$', ';')
 		end
 	end
 	--]]

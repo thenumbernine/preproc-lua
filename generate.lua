@@ -52,7 +52,7 @@ else	-- assume everything else uses gcc
 --print('results')
 --print(results)
 	assert(results:match'include')
-	assert(results:match('#include'))	-- why doesn't this match? 
+	assert(results:match('#include'))	-- why doesn't this match?
 	assert(results:match'#include "%.%.%." search starts here:')
 	local userSearchStr, sysSearchStr = results:match'#include "%.%.%." search starts here:(.-)#include <%.%.%.> search starts here:(.-)End of search list%.'
 	assert(userSearchStr)
@@ -79,7 +79,7 @@ else	-- assume everything else uses gcc
 #define __has_builtin(x)		0
 #define __has_include(x)		0
 #define __has_warning(x)		0
-#define __asm__(x) 
+#define __asm__(x)
 ]]
 end
 

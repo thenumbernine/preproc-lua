@@ -1,8 +1,6 @@
 local string = require 'ext.string'
 local table = require 'ext.table'
 local tolua = require 'ext.tolua'
-local os = require 'ext.os'
-local io = require 'ext.io'
 local file = require 'ext.file'
 local class = require 'ext.class'
 
@@ -101,7 +99,7 @@ end
 
 function Preproc:getIncludeFileCode(fn, search)
 	-- at position i, insert the file
-	return assert(file[fn], "couldn't find file "..fn)
+	return assert(file(fn):read(), "couldn't find file "..fn)
 end
 
 function Preproc:getDefineCode(k, v, l)
@@ -245,7 +243,7 @@ function Preproc:searchForInclude(fn, sys, startHere)
 		d = includeDirs[i]
 		local p = d..'/'..fn
 		p = p:gsub('//+', '/')
-		if os.fileexists(p) then
+		if file(p):exists() then
 			return p
 		end
 	end
@@ -1341,7 +1339,7 @@ function Preproc:__call(args)
 						local foundPrevIncludeDir
 						for i=#self.includeStack,1,-1 do
 							local includeNextFile = self.includeStack[i]
-							local dir, prevfn = io.getfiledir(includeNextFile)
+							local dir, prevfn = file(includeNextFile):getdir()
 --print(includeNextFile, dir, prevfn)
 							if prevfn == fn then
 								foundPrevIncludeDir = dir
@@ -1368,7 +1366,7 @@ function Preproc:__call(args)
 --print('include_next '..fn)
 							lines:insert(i, '/* END '..fn..' */')
 							-- at position i, insert the file
-							local newcode = assert(file[fn], "couldn't find file "..fn)
+							local newcode = assert(file(fn):read(), "couldn't find file "..fn)
 
 							newcode = removeCommentsAndApplyContinuations(newcode)
 							local newlines = string.split(newcode, '\n')

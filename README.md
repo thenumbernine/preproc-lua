@@ -7,7 +7,23 @@ Depends on:
 - [lua-ext](https://github.com/thenumbernine/lua-ext)
 - [lua-template](https://github.com/thenumbernine/lua-template)
 
-usage:
+## `generate.lua` ##
+
+This file generates stripped header files from C header files.
+The stripped headers are specific to LuaJIT:
+-) They have #define constants replaced with enum{}'s.
+-) They have function prototypes preserved.
+
+`luajit generate.lua <optional-args> <include-file1> <include-file2> ...`
+
+optional-args:
+	-I<include-dir> = add extra include directory search path
+	-M<macro-name>[=<macro-value>] = add extra macro
+	-skip <include-file> = include and skip the specified include -- do not include its contents in the header generation.
+
+## `preproc.lua` ##
+
+This is the lua file for preprocessor class.
 
 process a single file:
 ```

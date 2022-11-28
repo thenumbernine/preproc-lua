@@ -1101,362 +1101,362 @@ function Preproc:__call(args)
 			if popInc then
 				local last = self.includeStack:remove()
 -- TODO in my nested include() this is getting broken
---				assert(last == popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
-			end
-
-			-- nil = no condition present
-			-- true = current condition is true
-			-- false = current condition is false
-			local eval = true
-			if #ifstack > 0 then
-				for i,b in ipairs(ifstack) do
-					if b[1] == false then
-						eval = false
-						break
+				assert(last == popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
+			else
+				-- nil = no condition present
+				-- true = current condition is true
+				-- false = current condition is false
+				local eval = true
+				if #ifstack > 0 then
+					for i,b in ipairs(ifstack) do
+						if b[1] == false then
+							eval = false
+							break
+						end
 					end
 				end
-			end
---print('eval is', eval, 'line is', l)
+	--print('eval is', eval, 'line is', l)
 
-			l = string.trim(l)	-- trailing space doesn't matter, right?
-			if l:sub(1,1) == '#' then
-				local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
---print('cmd is', cmd, 'rest is', rest)
-				
-				local function closeIf()
-					assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
-					ifstack:remove()
-				end
+				l = string.trim(l)	-- trailing space doesn't matter, right?
+				if l:sub(1,1) == '#' then
+					local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
+	--print('cmd is', cmd, 'rest is', rest)
+					
+					local function closeIf()
+						assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
+						ifstack:remove()
+					end
 
-				if cmd == 'define' then
-					if eval then
-						local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
-						if k then
-							assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---print('defining with params',k,params,paramdef)
-							
--- [[ what if we're defining a macro with args?
--- at this point I probably need to use a parser on #if evaluations
-							local paramstr = params
-							params =
-								paramstr:match'^%s*$'
-								and table()
-								or string.split(paramstr, ','):mapi(string.trim)
-							for i,param in ipairs(params) do
-								assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name: "..tostring(param))
-							end
-						
-							lines[i] = self:getDefineCode(k, {
-								params = params,
-								def = paramdef,
-							}, l)
-						else
-						
-							local k, v = rest:match'^(%S+)%s+(.-)$'
+					if cmd == 'define' then
+						if eval then
+							local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---print('defining value',k,v)
-								-- [[ evaluate macros of v?
-								-- and skip previous lines
-								self.foundIncompleteMacroWarningMessage = nil
-								--v = self:replaceMacros(v)
-								-- no, that'll be done in getDefineCode (right?()
-								--]]
+	--print('defining with params',k,params,paramdef)
+								
+	-- [[ what if we're defining a macro with args?
+	-- at this point I probably need to use a parser on #if evaluations
+								local paramstr = params
+								params =
+									paramstr:match'^%s*$'
+									and table()
+									or string.split(paramstr, ','):mapi(string.trim)
+								for i,param in ipairs(params) do
+									assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name: "..tostring(param))
+								end
+							
+								lines[i] = self:getDefineCode(k, {
+									params = params,
+									def = paramdef,
+								}, l)
 							else
-								k = rest
-								v = ''
-								assert(k ~= '', "couldn't find what you were defining: "..l)
-								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---print('defining empty',k,v)
-							end
 							
-							--TODO lines[i] = ...
-							-- and then incorporate the enim {} into the code
-							lines[i] = self:getDefineCode(k, v, l)
---print('line is', l)
-						end
-					else
-						lines:remove(i)
-						i = i - 1
-					end
-				elseif cmd == 'if'
-				or cmd == 'elif'
-				then
-					local hasprocessed = false
-					if cmd == 'elif' then
-						local oldcond = ifstack:last()
-						hasprocessed = oldcond[1] or oldcond[2]
-						closeIf()
-					end
-
-					local cond
-					if cmd == 'elif'
-					and hasprocessed
-					then
-						cond = false
-					else
-						cond = self:parseCondExpr(rest)
-						assert(cond ~= nil, "cond must be true or false")
-					end
---print('got cond', cond, 'from', rest)
-					ifstack:insert{cond, hasprocessed}
-					
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'else' then
-					assert(#ifstack > 0, "found an #else without an #if")
-					local oldcond = ifstack:last()
-					local hasprocessed = oldcond[1] or oldcond[2]
-					assert(rest == '', "found trailing characters after "..cmd)
-					ifstack[#ifstack] = {not hasprocessed, hasprocessed}
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'ifdef' then
---print('ifdef looking for '..rest)
-					assert(isvalidsymbol(rest))
-					local cond = not not self.macros[rest]
---print('got cond', cond)
-					ifstack:insert{cond, false}
-					
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'ifndef' then
---print('ifndef looking for', rest)
-					assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
-					local cond = not self.macros[rest]
---print('got cond', cond)
-					ifstack:insert{cond, false}
-					
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'endif' then
-					assert(rest == '', "found trailing characters after "..cmd)
-					closeIf()
-					ifHandled = nil
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'undef' then
-					assert(isvalidsymbol(rest))
-					if eval then
-						--[[
-						self.macros[rest] = nil
-						lines:remove(i)
-						i = i - 1
-						--]]
-						-- [[
-						lines[i] = self:getDefineCode(rest, nil, l)
-						--]]
-					else
-						lines:remove(i)
-						i = i - 1
-					end
-				elseif cmd == 'error' then
-					if eval then
-						error(rest)
-					end
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'warning' then
-					if eval then
-						print('warning: '..rest)
-					end
-					lines:remove(i)
-					i = i - 1
-				elseif cmd == 'include' then
-					lines:remove(i)
-					if eval then
-						-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
-						-- TODO there are some lines that are #include MACRO ... but if it's within a string then no, dont replace macros.
-						rest = self:replaceMacros(rest, nil, true, true)
-
-						local sys = true
-						local fn = rest:match'^<(.*)>$'
-						if not fn then
-							sys = false
-							fn = rest:match'^"(.*)"$'
-						end
-						if not fn then
-							error("include expected file: "..l)
-						end
-					
-						local search = fn
-						fn = self:searchForInclude(fn, sys)
-						if not fn then
-							io.stderr:write('sys '..tostring(sys)..'\n')
-							if sys then
-								io.stderr:write('sys search paths:\n')
-								io.stderr:write(self.sysIncludeDirs:concat'\n'..'\n')
-							else
-								io.stderr:write('user search paths:\n')
-								io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
+								local k, v = rest:match'^(%S+)%s+(.-)$'
+								if k then
+									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
+	--print('defining value',k,v)
+									-- [[ evaluate macros of v?
+									-- and skip previous lines
+									self.foundIncompleteMacroWarningMessage = nil
+									--v = self:replaceMacros(v)
+									-- no, that'll be done in getDefineCode (right?()
+									--]]
+								else
+									k = rest
+									v = ''
+									assert(k ~= '', "couldn't find what you were defining: "..l)
+									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
+	--print('defining empty',k,v)
+								end
+								
+								--TODO lines[i] = ...
+								-- and then incorporate the enim {} into the code
+								lines[i] = self:getDefineCode(k, v, l)
+	--print('line is', l)
 							end
-							io.stderr:flush()
-							error("couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
-						end
-						if not self.alreadyIncludedFiles[fn] then
---print('include '..fn)
-							lines:insert(i, '/* END   '..fn..' */')
-							
-							
-							-- TODO not sure how I want to do this
-							-- but I want my include-lua project to be able to process certain dependent headers in advance
-							-- though not all ... only ones that are not dependent on the current preproc state (i.e. the system files)
-							-- so this is a delicate mess.
-							local newcode = self:getIncludeFileCode(fn, search)
-							
-							newcode = removeCommentsAndApplyContinuations(newcode)
-							local newlines = string.split(newcode, '\n')
-							
-							while #newlines > 0 do
-								lines:insert(i, newlines:remove())
-							end
-							
-							self.includeStack:insert(fn)
-							lines:insert(i, '/* BEGIN '..fn..' */')
-							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
-						end
-					end
-					i = i - 1
-				elseif cmd == 'include_next' then
-					lines:remove(i)
-					if eval then
-						-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
-						rest = self:replaceMacros(rest, nil, true, true)
-
-						-- same as include .. except use the *next* search path for this file
-						local sys = true
-						local fn = rest:match'^<(.*)>$'
-						if not fn then
-							sys = false
-							fn = rest:match'^"(.*)"$'
-						end
-						if not fn then
-							error("include expected file: "..l)
-						end
-					
-						local search = fn
---print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
-						-- search through the include stack for the most recent file with the name of what we're looking for ...
-						local foundPrevIncludeDir
-						for i=#self.includeStack,1,-1 do
-							local includeNextFile = self.includeStack[i]
-							local dir, prevfn = file(includeNextFile):getdir()
---print(includeNextFile, dir, prevfn)
-							if prevfn == fn then
-								foundPrevIncludeDir = dir
-								break
-							end
-						end
---print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
-						-- and if we didn't find it, just use nil, and searchForInclude will do a regular search and get the first option
-						fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
-						
-						if not fn then
-							io.stderr:write('sys '..tostring(sys)..'\n')
-							if sys then
-								io.stderr:write('sys search paths:\n')
-								io.stderr:write(self.sysIncludeDirs:concat'\n'..'\n')
-							else
-								io.stderr:write('user search paths:\n')
-								io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
-							end
-							io.stderr:flush()
-							error("couldn't find include file "..search..'\n')
-						end
-						if not self.alreadyIncludedFiles[fn] then
---print('include_next '..fn)
-							lines:insert(i, '/* END   '..fn..' */')
-							-- at position i, insert the file
-							local newcode = assert(file(fn):read(), "couldn't find file "..fn)
-
-							newcode = removeCommentsAndApplyContinuations(newcode)
-							local newlines = string.split(newcode, '\n')
-							
-							while #newlines > 0 do
-								lines:insert(i, newlines:remove())
-							end
-						
-							self.includeStack:insert(fn)
-							lines:insert(i, '/* BEGIN '..fn..' */')
-							i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
-						end
-					end
-					i = i - 1
-			
-				elseif cmd == 'pragma' then
-					if eval then
-						if rest == 'once' then
-							-- if we #pragma once on a non-included file then nobody cares
-							if #self.includeStack > 0 then
-								local last = self.includeStack:last()
-								self.alreadyIncludedFiles[last] = true
-							end
+						else
 							lines:remove(i)
 							i = i - 1
+						end
+					elseif cmd == 'if'
+					or cmd == 'elif'
+					then
+						local hasprocessed = false
+						if cmd == 'elif' then
+							local oldcond = ifstack:last()
+							hasprocessed = oldcond[1] or oldcond[2]
+							closeIf()
+						end
+
+						local cond
+						if cmd == 'elif'
+						and hasprocessed
+						then
+							cond = false
 						else
-							lines[i] = '/* '..lines[i]..' */'
+							cond = self:parseCondExpr(rest)
+							assert(cond ~= nil, "cond must be true or false")
+						end
+	--print('got cond', cond, 'from', rest)
+						ifstack:insert{cond, hasprocessed}
+						
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'else' then
+						assert(#ifstack > 0, "found an #else without an #if")
+						local oldcond = ifstack:last()
+						local hasprocessed = oldcond[1] or oldcond[2]
+						assert(rest == '', "found trailing characters after "..cmd)
+						ifstack[#ifstack] = {not hasprocessed, hasprocessed}
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'ifdef' then
+	--print('ifdef looking for '..rest)
+						assert(isvalidsymbol(rest))
+						local cond = not not self.macros[rest]
+	--print('got cond', cond)
+						ifstack:insert{cond, false}
+						
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'ifndef' then
+	--print('ifndef looking for', rest)
+						assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
+						local cond = not self.macros[rest]
+	--print('got cond', cond)
+						ifstack:insert{cond, false}
+						
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'endif' then
+						assert(rest == '', "found trailing characters after "..cmd)
+						closeIf()
+						ifHandled = nil
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'undef' then
+						assert(isvalidsymbol(rest))
+						if eval then
+							--[[
+							self.macros[rest] = nil
+							lines:remove(i)
+							i = i - 1
+							--]]
+							-- [[
+							lines[i] = self:getDefineCode(rest, nil, l)
+							--]]
+						else
+							lines:remove(i)
+							i = i - 1
+						end
+					elseif cmd == 'error' then
+						if eval then
+							error(rest)
+						end
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'warning' then
+						if eval then
+							print('warning: '..rest)
+						end
+						lines:remove(i)
+						i = i - 1
+					elseif cmd == 'include' then
+						lines:remove(i)
+						if eval then
+							-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
+							-- TODO there are some lines that are #include MACRO ... but if it's within a string then no, dont replace macros.
+							rest = self:replaceMacros(rest, nil, true, true)
+
+							local sys = true
+							local fn = rest:match'^<(.*)>$'
+							if not fn then
+								sys = false
+								fn = rest:match'^"(.*)"$'
+							end
+							if not fn then
+								error("include expected file: "..l)
+							end
+						
+							local search = fn
+							fn = self:searchForInclude(fn, sys)
+							if not fn then
+								io.stderr:write('sys '..tostring(sys)..'\n')
+								if sys then
+									io.stderr:write('sys search paths:\n')
+									io.stderr:write(self.sysIncludeDirs:concat'\n'..'\n')
+								else
+									io.stderr:write('user search paths:\n')
+									io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
+								end
+								io.stderr:flush()
+								error("couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
+							end
+							if not self.alreadyIncludedFiles[fn] then
+	--print('include '..fn)
+								lines:insert(i, '/* END   '..fn..' */')
+								
+								
+								-- TODO not sure how I want to do this
+								-- but I want my include-lua project to be able to process certain dependent headers in advance
+								-- though not all ... only ones that are not dependent on the current preproc state (i.e. the system files)
+								-- so this is a delicate mess.
+								local newcode = self:getIncludeFileCode(fn, search)
+								
+								newcode = removeCommentsAndApplyContinuations(newcode)
+								local newlines = string.split(newcode, '\n')
+								
+								while #newlines > 0 do
+									lines:insert(i, newlines:remove())
+								end
+								
+								self.includeStack:insert(fn)
+								lines:insert(i, '/* BEGIN '..fn..' */')
+								i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
+							end
+						end
+						i = i - 1
+					elseif cmd == 'include_next' then
+						lines:remove(i)
+						if eval then
+							-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
+							rest = self:replaceMacros(rest, nil, true, true)
+
+							-- same as include .. except use the *next* search path for this file
+							local sys = true
+							local fn = rest:match'^<(.*)>$'
+							if not fn then
+								sys = false
+								fn = rest:match'^"(.*)"$'
+							end
+							if not fn then
+								error("include expected file: "..l)
+							end
+						
+							local search = fn
+	--print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
+							-- search through the include stack for the most recent file with the name of what we're looking for ...
+							local foundPrevIncludeDir
+							for i=#self.includeStack,1,-1 do
+								local includeNextFile = self.includeStack[i]
+								local dir, prevfn = file(includeNextFile):getdir()
+	--print(includeNextFile, dir, prevfn)
+								if prevfn == fn then
+									foundPrevIncludeDir = dir
+									break
+								end
+							end
+	--print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
+							-- and if we didn't find it, just use nil, and searchForInclude will do a regular search and get the first option
+							fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
+							
+							if not fn then
+								io.stderr:write('sys '..tostring(sys)..'\n')
+								if sys then
+									io.stderr:write('sys search paths:\n')
+									io.stderr:write(self.sysIncludeDirs:concat'\n'..'\n')
+								else
+									io.stderr:write('user search paths:\n')
+									io.stderr:write(self.userIncludeDirs:concat'\n'..'\n')
+								end
+								io.stderr:flush()
+								error("couldn't find include file "..search..'\n')
+							end
+							if not self.alreadyIncludedFiles[fn] then
+	--print('include_next '..fn)
+								lines:insert(i, '/* END   '..fn..' */')
+								-- at position i, insert the file
+								local newcode = assert(file(fn):read(), "couldn't find file "..fn)
+
+								newcode = removeCommentsAndApplyContinuations(newcode)
+								local newlines = string.split(newcode, '\n')
+								
+								while #newlines > 0 do
+									lines:insert(i, newlines:remove())
+								end
+							
+								self.includeStack:insert(fn)
+								lines:insert(i, '/* BEGIN '..fn..' */')
+								i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
+							end
+						end
+						i = i - 1
+				
+					elseif cmd == 'pragma' then
+						if eval then
+							if rest == 'once' then
+								-- if we #pragma once on a non-included file then nobody cares
+								if #self.includeStack > 0 then
+									local last = self.includeStack:last()
+									self.alreadyIncludedFiles[last] = true
+								end
+								lines:remove(i)
+								i = i - 1
+							else
+								lines[i] = '/* '..lines[i]..' */'
+							end
+						else
+							lines:remove(i)
+							i = i - 1
 						end
 					else
-						lines:remove(i)
-						i = i - 1
+						error("can't handle that preprocessor yet: "..l)
 					end
 				else
-					error("can't handle that preprocessor yet: "..l)
-				end
-			else
-				if eval == false then
-					lines:remove(i)
-					i = i - 1
-				else
--- [[ or should I just store lines for now, eval later (so that macro arguments can span multiple lines)
--- no ... because macros have state via #define and #undef, so you must evaluate them now
--- but then how does C handle
--- 	#define M(a,b,c)
---	M(a
---  #undef M
---		, b, c)
-
-					local prevIncompleteMacroLine = self.foundIncompleteMacroLine
-					self.foundIncompleteMacroLine = nil
-					local origl = l
-					if prevIncompleteMacroLine then
-						--print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
-						lines:insert(i, '/* ### PREPENDING ### '
-							..prevIncompleteMacroLine:gsub('/%*', '/ *'):gsub('%*/', '* /')
-							.. ' ### TO ### '
-							..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
-							..' */')
-						i = i + 1
-						l = prevIncompleteMacroLine .. ' ' .. l
-					end
-					
-					local nl = self:replaceMacros(l)
-					if self.foundIncompleteMacroLine then
-						--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
-						lines:insert(i, self.foundIncompleteMacroWarningMessage)
-						self.foundIncompleteMacroWarningMessage = nil
-						i = i + 1
-
-						--[[
-						lines[i] = '/* '..lines[i]..' */'
-						i = i + 1
-						--]]
-						--[[
+					if eval == false then
 						lines:remove(i)
 						i = i - 1
-						--]]
-					end
+					else
+	-- [[ or should I just store lines for now, eval later (so that macro arguments can span multiple lines)
+	-- no ... because macros have state via #define and #undef, so you must evaluate them now
+	-- but then how does C handle
+	-- 	#define M(a,b,c)
+	--	M(a
+	--  #undef M
+	--		, b, c)
 
-					if origl ~= nl then
---print('line was', l)
-						lines[i] = nl
---print('line is', l)
+						local prevIncompleteMacroLine = self.foundIncompleteMacroLine
+						self.foundIncompleteMacroLine = nil
+						local origl = l
+						if prevIncompleteMacroLine then
+							--print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
+							lines:insert(i, '/* ### PREPENDING ### '
+								..prevIncompleteMacroLine:gsub('/%*', '/ *'):gsub('%*/', '* /')
+								.. ' ### TO ### '
+								..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
+								..' */')
+							i = i + 1
+							l = prevIncompleteMacroLine .. ' ' .. l
+						end
+						
+						local nl = self:replaceMacros(l)
+						if self.foundIncompleteMacroLine then
+							--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
+							lines:insert(i, self.foundIncompleteMacroWarningMessage)
+							self.foundIncompleteMacroWarningMessage = nil
+							i = i + 1
+
+							--[[
+							lines[i] = '/* '..lines[i]..' */'
+							i = i + 1
+							--]]
+							--[[
+							lines:remove(i)
+							i = i - 1
+							--]]
+						end
+
+						if origl ~= nl then
+	--print('line was', l)
+							lines[i] = nl
+	--print('line is', l)
+						end
+						if self.foundIncompleteMacroLine then
+							lines:remove(i)
+							i = i - 1
+						end
+	--]]
 					end
-					if self.foundIncompleteMacroLine then
-						lines:remove(i)
-						i = i - 1
-					end
---]]
 				end
 			end
 			i = i + 1

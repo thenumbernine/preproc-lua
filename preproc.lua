@@ -1097,7 +1097,7 @@ function Preproc:__call(args)
 	xpcall(function()
 		while i <= #lines do
 			local l = lines[i]
-			local popInc = l:match'^/%* END (.*) %*/$'
+			local popInc = l:match'^/%* END   (.*) %*/$'
 			if popInc then
 				local last = self.includeStack:remove()
 -- TODO in my nested include() this is getting broken
@@ -1266,6 +1266,7 @@ function Preproc:__call(args)
 					lines:remove(i)
 					if eval then
 						-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
+						-- TODO there are some lines that are #include MACRO ... but if it's within a string then no, dont replace macros.
 						rest = self:replaceMacros(rest, nil, true, true)
 
 						local sys = true
@@ -1294,7 +1295,7 @@ function Preproc:__call(args)
 						end
 						if not self.alreadyIncludedFiles[fn] then
 --print('include '..fn)
-							lines:insert(i, '/* END '..fn..' */')
+							lines:insert(i, '/* END   '..fn..' */')
 							
 							
 							-- TODO not sure how I want to do this
@@ -1364,7 +1365,7 @@ function Preproc:__call(args)
 						end
 						if not self.alreadyIncludedFiles[fn] then
 --print('include_next '..fn)
-							lines:insert(i, '/* END '..fn..' */')
+							lines:insert(i, '/* END   '..fn..' */')
 							-- at position i, insert the file
 							local newcode = assert(file(fn):read(), "couldn't find file "..fn)
 

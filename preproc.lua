@@ -122,7 +122,7 @@ function Preproc:getDefineCode(k, v, l)
 		-- if the value string is a number define
 		local isnumber = tonumber(v)	-- TODO also check valid suffixes? l L etc
 		if isnumber then
-			-- ok Lua tonumber hack ... 
+			-- ok Lua tonumber hack ...
 			-- tonumber'0x10' converts from base 16 ..
 			-- tonumber'010' converts from base 10 *NOT* base 8 ...
 --print('line was', l)
@@ -553,7 +553,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 end
 
 local function cliteralintegertonumber(x)
-	-- ok Lua tonumber hack ... 
+	-- ok Lua tonumber hack ...
 	-- tonumber'0x10' converts from base 16 ..
 	-- tonumber'010' converts from base 10 *NOT* base 8 ...
 	-- and because now i'm using macro-evaluation to convert my #define's into enum {} 's ...
@@ -561,7 +561,7 @@ local function cliteralintegertonumber(x)
 	local n = tonumber(x)
 	if not n then return nil end
 	-- if it's really base 8 then lua will interpret it (successfully) as base-10
-	if type(x) == 'string' 
+	if type(x) == 'string'
 	and x:match'^0%d'
 	then
 		n = tonumber(x, 8)

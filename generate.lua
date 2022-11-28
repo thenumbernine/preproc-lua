@@ -6,6 +6,21 @@ local io = require 'ext.io'
 
 local preproc = require 'preproc'()
 
+--[[
+args:
+	-I<incdir> = add include dir
+	-skip <inc> = include it, add it to the state, but don't add it to the output
+		useful for system files that you don't want mixed in there
+--]]
+local args = table{...}
+local verbose
+for i=#args,1,-1 do	-- TOOD handle *all* args here and just use later what you read
+	if args[i] == '-V' then
+		table.remove(args,i)
+		verbose = true
+	end
+end
+
 if ffi.os == 'Windows' then
 	-- I guess pick these to match the compiler used to build luajit
 	-- TODO this could work if my macro evaluator could handle undef'd comparisons <=> replace with zero
@@ -45,27 +60,33 @@ if ffi.os == 'Windows' then
 	}
 	--]]
 else	-- assume everything else uses gcc
-	assert(os.execute'g++ --version > /dev/null 2>&1', "failed to find gcc")	-- make sure we have gcc
-	preproc(io.readproc'g++ -dM -E - < /dev/null 2>&1')
+	assert(os.execute'gcc --version > /dev/null 2>&1', "failed to find gcc")	-- make sure we have gcc
+	preproc(io.readproc'gcc -dM -E - < /dev/null 2>&1')
 
-	local results = io.readproc'g++ -xc++ -E -v - < /dev/null 2>&1'
---print('results')
---print(results)
+	local results = io.readproc'gcc -E -v - < /dev/null 2>&1'
+	if verbose then
+		print('results')
+		print(results)
+	end
 	assert(results:match'include')
 	assert(results:match('#include'))	-- why doesn't this match?
 	assert(results:match'#include "%.%.%." search starts here:')
 	local userSearchStr, sysSearchStr = results:match'#include "%.%.%." search starts here:(.-)#include <%.%.%.> search starts here:(.-)End of search list%.'
 	assert(userSearchStr)
---print('userSearchStr')
---print(userSearchStr)
---print('sysSearchStr')
---print(sysSearchStr)
+	if verbose then
+		print('userSearchStr')
+		print(userSearchStr)
+		print('sysSearchStr')
+		print(sysSearchStr)
+	end
 	local userSearchDirs = string.split(string.trim(userSearchStr), '\n'):mapi(string.trim)
 	local sysSearchDirs = string.split(string.trim(sysSearchStr), '\n'):mapi(string.trim)
---print('userSearchDirs')
---print(require 'ext.tolua'(userSearchDirs))
---print('sysSearchDirs')
---print(require 'ext.tolua'(sysSearchDirs))
+	if verbose then
+		print('userSearchDirs')
+		print(require 'ext.tolua'(userSearchDirs))
+		print('sysSearchDirs')
+		print(require 'ext.tolua'(sysSearchDirs))
+	end
 	preproc:addIncludeDirs(userSearchDirs, false)
 	preproc:addIncludeDirs(sysSearchDirs, true)
 
@@ -80,6 +101,8 @@ else	-- assume everything else uses gcc
 #define __has_include(x)		0
 #define __has_warning(x)		0
 #define __asm__(x)
+#define __has_unique_object_representations(x) 0
+#define _GLIBCXX_HAS_BUILTIN(x)	0
 ]]
 end
 
@@ -92,13 +115,6 @@ preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', f
 -- but for testing I enable it ... with -I.
 --preproc:addIncludeDir('.', false)
 
---[[
-args:
-	-I<incdir> = add include dir
-	-skip <inc> = include it, add it to the state, but don't add it to the output
-		useful for system files that you don't want mixed in there
---]]
-local args = table{...}
 local silentfiles = table()
 do
 	local i = 1

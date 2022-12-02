@@ -279,6 +279,8 @@ end
 	-- stdio.h and stdarg.h both define va_list, so I put it here 
 	{inc='va_list.h', out='c/va_list.lua'},
 
+	-- luajit has its own bools already defined
+	{inc='stdbool.h', out='c/stdbool.lua'},
 
 -- these come from external libraries (so I don't put them in the c/ subfolder)
 
@@ -341,4 +343,141 @@ return wrapper
 		return code
 	end},
 
+	-- apt install libffi-dev
+	{inc='ffi.h', out='libffi.lua', final=function(code)
+		code = removeWarnings(code)	-- LLONG_MIN
+		code = [[
+-- WARNING, this is libffi, not luajit ffi
+-- will that make my stupid ?/?.lua LUA_PATH rule screw things up?  if so then move this file ... or rename it to libffi.lua or something
+]] .. code .. [[
+return ffi.load'ffi'
+]]
+		return code
+	end},
+
+	-- depends: stdbool.h
+	-- apt install libgif-dev
+	{inc='gif_lib.h', out='gif.lua', final=function(code)
+		code = [[
+-- gif 5.1.9
+]] .. code .. [[
+local gif
+if ffi.os == 'OSX' then
+	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libgif.dylib')
+elseif ffi.os == 'Windows' then
+	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/libgif1.dll')
+elseif ffi.os == 'Linux' then
+	gif = ffi.load'gif'
+else               
+	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libgif.so')
+end
+return gif
+]]
+		return code
+	end},
+
+	{inc='fitsio.h', out='fitsio.lua', final=function(code)
+		code = removeWarnings(code)	-- LLONG_MIN
+		-- OFF_T is define'd to off_t soo ...
+		code = code:gsub('enum { OFF_T = 0 };\n', '')
+		code = code:gsub('OFF_T', 'off_t')
+		code = code .. [[
+return ffi.load 'cfitsio'
+]]
+		return code
+	end},
+
+
+
+--[=[
+	-- these all have some inlined enum errors:
+	
+	-- depends on limits.h
+	{inc='dirent.h',		out='c/dirent.lua'},
+	
+	-- depends: sched.h time.h
+	{inc='pthread.h',		out='c/pthread.lua'},
+
+	{inc='sys/param.h', out='c/sys/param.lua', final=function(code)
+		-- warning for redefining LLONG_MIN or something
+		code = removeWarnings(code)
+		code = commentOutLine(code, 'enum { SIGIO = 0 };')
+		code = commentOutLine(code, 'enum { SIGCLD = 0 };')
+		code = commentOutLine(code, 'enum { SI_DETHREAD = 0 };')
+		code = commentOutLine(code, 'enum { SI_TKILL = 0 };')
+		code = commentOutLine(code, 'enum { SI_SIGIO = 0 };')
+		code = commentOutLine(code, 'enum { SI_ASYNCIO = 0 };')
+		code = commentOutLine(code, 'enum { SI_MESGQ = 0 };')
+		code = commentOutLine(code, 'enum { SI_TIMER = 0 };')
+		code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
+		code = commentOutLine(code, 'enum { SI_USER = 0 };')
+		code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
+		code = remove_need_macro(code, 'NULL')
+		return code
+	end}
+
+	{inc='sys/time.h',		out='c/sys/time.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'suseconds_t')
+		return code
+	end},
+
+
+	-- depends on bits/libc-header-start
+	-- '<identifier>' expected near '_Complex' at line 2
+	-- has to do with enum/define'ing the builtin word _Complex
+	{inc='complex.h',		out='c/complex.lua'},
+
+	-- depends on complex.h
+	{inc='cblas.h', out='cblas.lua', final=function(code)
+		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		return code
+	end},
+
+	-- depend on cblas, depends on complex
+	lapacke.sh
+	lapack.sh
+
+	-- uses a vararg macro which I don't support yet
+	{inc='sys/sysinfo.h',		out='c/sys/sysinfo.lua'},
+
+
+	-- "libpng requires a signed 16-bit type"
+	{inc='png.h', out='png.lua', final=function(code)
+		-- warning for redefining LLONG_MIN or something
+		code = removeWarnings(code)
+		code = [[
+-- png 1.6.37 + zlib 1.2.8
+]] .. code .. [[
+local png
+if ffi.os == 'OSX' then
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')
+elseif ffi.os == 'Windows' then
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
+elseif ffi.os == 'Linux' then
+	png = ffi.load'png'
+else               
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
+end
+return png
+]]
+		return code
+	end},
+
+-- these are split between OS's, and a bit of a mess atm
+	
+	{inc='jpeglib.h', out='jpeg.lua'},
+
+	{inc='GL/gl.h', out='OpenGL.lua'},
+
+	-- uses pkg-config --cflags ...
+	lua.sh
+	tiff.sh
+	hdf5.sh
+	netcdf.sh
+	sdl.sh
+
+	-- takes more than one includes
+	cimgui.sh
+	OpenCL.sh
+--]=]
 }

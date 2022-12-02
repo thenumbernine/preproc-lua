@@ -617,15 +617,22 @@ return png
 	lapacke.sh
 	lapack.sh
 
---]=]
-
---[[
 	-- not working ..
-	{inc='lua.h', out='lua.lua', flags=string.trim(io.readproc'pkg-config --cflags lua'), final=function(code)
-		--code = removeWarnings(code)
-		return code
-	end},
+	-- "numeric float type not defined"
+	{
+		inc='lua.h',
+		--inc='<lua.h>', 
+		out='lua.lua', 
+		--flags=string.trim(io.readproc'pkg-config --cflags lua'),
+		final=function(code)
+			--code = removeWarnings(code)
+			return code
+		end,
+	},
 
+--]=]
+	
+--[[
 	-- looks like atm i'm using a hand-rolled sdl anyways
 	{inc='SDL2/SDL.h', out='sdl.lua', flags=string.trim(io.readproc'pkg-config --cflags sdl2'), final=function(code)
 		--code = removeWarnings(code)

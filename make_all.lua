@@ -10,10 +10,14 @@ local includeList = require 'include-list'
 local req = ...
 if not req then error("make_all.lua all for all, or make_all.lua <some filename>") end
 if req ~= 'all' then
+	print('searching for '..req)
 	includeList = table.filter(includeList, function(inc)
 		--return inc.inc:match(req)
 		return inc.inc == req
 	end):setmetatable(nil)
+	if #includeList == 0 then
+		error("couldn't find "..req)
+	end
 end
 
 local function exec(cmd)
@@ -42,7 +46,7 @@ ffi.cdef[[
 			if f:sub(1,1) == '"' then
 				cmd:insert(('%q'):format(f))
 			elseif f:sub(1,1) == '<' then
-				cmd:insert(f)
+				cmd:insert('"'..f..'"')
 			else
 				cmd:insert('"<'..f..'>"')
 			end

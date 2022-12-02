@@ -114,6 +114,7 @@ function Preproc:getDefineCode(k, v, l)
 	
 		-- ok if it's a preprocessor expression then we need it evaluated
 		-- but it could be a non-preproc expression as well, in which case maybe it's a float?
+		local origv = v
 		pcall(function()
 			v = ''..self:parseCondInt(v)
 			-- parseCondExpr returns bool
@@ -131,7 +132,7 @@ function Preproc:getDefineCode(k, v, l)
 			local oldv = self.generatedEnums[k]
 			if oldv then
 				if oldv ~= v then
-					print('warning: redefining '..k)
+					print('warning: redefining '..k..' from '..tostring(oldv)..' to '..tostring(v).. ' (originally '..tostring(origv)..')')
 					-- redefine the enum value as well?
 					-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
 				

@@ -3,8 +3,84 @@ local ffi = require 'ffi'		-- used for OS check and used for verifying that the 
 local table = require 'ext.table'
 local string = require 'ext.string'
 local io = require 'ext.io'
+local class = require 'ext.class'
 
-local preproc = require 'preproc'()
+local Preproc = require 'preproc'
+local ThisPreproc = class(Preproc)
+
+
+-- [===============[ begin the code for injecting require()'s to previously-generated luajit files
+
+
+local includeList = require 'include-list'
+--[=[ can't do this without also saving all the Preproc lua state changes that occur from loading the include file
+function ThisPreproc:getIncludeFileCode(fn, search)
+--io.stderr:write('#include ',fn,'\t#search ',search,'\n')
+--io.stderr:flush()
+	local _, inc = table.find(includeList, nil, function(o) return o.inc == search end)
+	if inc then
+		local luainc = inc.out:match'^(.*)%.lua$':gsub('//', '.')
+		-- hmm while this is the right code ... it'll get reprocessed ...
+		return "]] require 'ffi."..luainc.."' ffi.cdef[["
+	else
+		return ThisPreproc.super.getIncludeFileCode(self, fn, search)
+	end
+end
+--]=]
+-- [=[ so instead i'll just 
+-- 1) store the search => found include names, then 
+function ThisPreproc:getIncludeFileCode(fn, search)
+	self.mapFromIncludeToSearchFile
+		= self.mapFromIncludeToSearchFile
+		or {}
+	self.mapFromIncludeToSearchFile[fn] = search
+	return ThisPreproc.super.getIncludeFileCode(self, fn, search)
+end
+-- 2) do a final pass replacing the BEGIN/END's of the found names
+function ThisPreproc:__call(...)
+	local code = ThisPreproc.super.__call(self, ...)
+	local lines = string.split(code, '\n')
+
+	local currentfile
+	local currentluainc 
+	local newlines = table{lines[1]}
+	for i=2,#lines do	-- skip the first line, cuz this is the BEGIN for the include we are currently generating.  
+						-- dont wanna swap out the whole thing
+		local l = lines[i]
+		if not currentfile then 
+			local beginfile = l:match'^/%* BEGIN (.*) %*/$'
+			if beginfile then
+				-- if it's found in includeList then ...
+				local search = self.mapFromIncludeToSearchFile[beginfile]
+				local _, inc = table.find(includeList, nil, function(o) return o.inc == search end)
+				if inc then
+					currentfile = beginfile
+					currentluainc = inc.out:match'^(.*)%.lua$':gsub('/', '.')
+				end
+			end
+			newlines:insert(l)
+		else
+			-- find the end
+			local endfile = l:match'^/%* END   (.*) %*/$'
+			if endfile and endfile == currentfile then
+				newlines:insert("]] require 'ffi."..currentluainc.."' ffi.cdef[[")
+				-- clear state
+				currentfile = nil
+				currentluainc = nil
+				newlines:insert(l)
+			end
+		end
+	end
+
+	return newlines:concat'\n'
+end
+--]=]
+
+
+--]===============] end the code for injecting require()'s to previously-generated luajit files
+
+
+local preproc = ThisPreproc()
 
 --[[
 args:
@@ -173,7 +249,7 @@ print(code)
 -- see if there's any errors here
 -- TODO There will almost always be errors if you used -skip, so how about in that case automatically include the luajit of the skipped files?
 --local result = xpcall(function()
-	ffi.cdef(code)
+--	ffi.cdef(code)
 --end, function(err)
 --	io.stderr:write('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
 --	io.stderr:write(err..'\n'..debug.traceback())

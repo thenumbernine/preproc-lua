@@ -397,8 +397,6 @@ return ffi.load 'cfitsio'
 		return code
 	end},
 
-
-
 --[=[
 	-- these all have some inlined enum errors:
 	
@@ -431,11 +429,30 @@ return ffi.load 'cfitsio'
 		return code
 	end},
 
+-- these have _Complex errors
 
 	-- depends on bits/libc-header-start
 	-- '<identifier>' expected near '_Complex' at line 2
 	-- has to do with enum/define'ing the builtin word _Complex
-	{inc='complex.h',		out='c/complex.lua'},
+	{inc='complex.h', out='c/complex.lua', final=function(code)
+		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		code = commentOutLine(code, 'enum { _Complex = 0 };')
+		code = commentOutLine(code, 'enum { complex = 0 };')
+		-- this uses define<=>typedef which always has some trouble
+		-- and this uses redefines which luajit ffi cant do so...
+		-- TODO from 
+		--  /* # define _Mdouble_complex_ _Mdouble_ _Complex ### string, not number "_Mdouble_ _Complex" */
+		-- to
+		--  /* redefining matching value: #define _Mdouble_\t\tfloat */
+		-- replace 	_Mdouble_complex_ with double _Complex
+		-- from there to 
+		--  /* # define _Mdouble_       long double ### string, not number "long double" */
+		-- replace _Mdouble_complex_ with float _Complex
+		-- and from there until then end
+		-- replace _Mdouble_complex_  with long double _Complex
+		return code
+	end},
+
 
 	-- depends on complex.h
 	{inc='cblas.h', out='cblas.lua', final=function(code)

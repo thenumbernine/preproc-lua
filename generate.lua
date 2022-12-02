@@ -8,6 +8,8 @@ local class = require 'ext.class'
 local Preproc = require 'preproc'
 local ThisPreproc = class(Preproc)
 
+-- this is assigned below when args are processed
+local incfiles 
 
 -- [===============[ begin the code for injecting require()'s to previously-generated luajit files
 
@@ -29,11 +31,11 @@ end
 --]=]
 -- [=[ so instead i'll just 
 -- 1) store the search => found include names, then 
-function ThisPreproc:getIncludeFileCode(fn, search)
+function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile
 		= self.mapFromIncludeToSearchFile
 		or {}
-	self.mapFromIncludeToSearchFile[fn] = search
+	self.mapFromIncludeToSearchFile[fn] = sys and ('<'..search..'>') or ('"'..search..'"')
 	return ThisPreproc.super.getIncludeFileCode(self, fn, search)
 end
 -- 2) do a final pass replacing the BEGIN/END's of the found names
@@ -43,19 +45,26 @@ function ThisPreproc:__call(...)
 
 	local currentfile
 	local currentluainc 
-	local newlines = table{lines[1]}
-	for i=2,#lines do	-- skip the first line, cuz this is the BEGIN for the include we are currently generating.  
-						-- dont wanna swap out the whole thing
-		local l = lines[i]
+	local newlines = table()
+	for i,l in ipairs(lines) do
+		-- skip the first BEGIN, cuz this is the BEGIN for the include we are currently generating.  
+		-- dont wanna swap out the whole thing
 		if not currentfile then 
 			local beginfile = l:match'^/%* BEGIN (.*) %*/$'
 			if beginfile then
-				-- if it's found in includeList then ...
 				local search = self.mapFromIncludeToSearchFile[beginfile]
-				local _, inc = table.find(includeList, nil, function(o) return o.inc == search end)
-				if inc then
-					currentfile = beginfile
-					currentluainc = inc.out:match'^(.*)%.lua$':gsub('/', '.')
+				if search then
+					--newlines:insert('/* search '..tostring(search)..' */')
+					-- if beginfile is one of the manually-included files then don't replace it here.
+					if not incfiles:find(search) then
+						-- if it's found in includeList then ...
+						local searchname = search:sub(2,-2)
+						local _, inc = table.find(includeList, nil, function(o) return o.inc == searchname end)
+						if inc then
+							currentfile = beginfile
+							currentluainc = inc.out:match'^(.*)%.lua$':gsub('/', '.')
+						end
+					end
 				end
 			end
 			newlines:insert(l)
@@ -216,7 +225,7 @@ do
 		end
 	end
 end
-local incfiles = args	-- whatever is left is include files
+incfiles = args	-- whatever is left is include files
 
 --[[
 windows' gl/gl.h defines the following:

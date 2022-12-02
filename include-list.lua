@@ -3,6 +3,7 @@
 -- this is also used during generation for swapping out #includes with require()'s of already-generated files
 
 local string = require 'ext.string'
+local io = require 'ext.io'
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	return (code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', ''))
@@ -263,6 +264,9 @@ end
 		return code
 	end},
 
+	-- depends: features.h stdint.h
+	{inc='inttypes.h', out='c/inttypes.lua'},
+
 
 -- requires manual manipulation:
 
@@ -397,8 +401,132 @@ return ffi.load 'cfitsio'
 		return code
 	end},
 
+	-- apt install libnetcdf-dev
+	{inc='netcdf.h', out='netcdf.lua', flags=string.trim(io.readproc'pkg-config --cflags netcdf'), final=function(code)
+		code = code .. [[
+return ffi.load'libnetcdf'
+]]
+		return code
+	end},
+
+	-- apt install libhdf5-dev
+	-- depends: inttypes.h
+	{inc='hdf5.h', out='hdf5.lua', flags=string.trim(io.readproc'pkg-config --cflags hdf5'), final=function(code)
+		-- old header comment:
+			-- for gcc / ubuntu looks like off_t is defined in either unistd.h or stdio.h, and either are set via testing/setting __off_t_defined
+			-- in other words, the defs in here are getting more and more conditional ...
+			-- pretty soon a full set of headers + full preprocessor might be necessary
+			-- TODO regen this on Windows and compare?
+		code = removeWarnings(code)	-- LLONG_MIN
+		return code
+	end},
+
+	{
+		flags='-I../../cpp/ImGuiCommon/include -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
+		-- cimgui has these 3 files together:
+		-- OpenGL i had to separate them
+		-- and OpenGL i put them in OS-specific place
+		inc='"cimgui.h"',
+		moreincs={
+			'"imgui_impl_sdl.h"',
+			'"imgui_impl_opengl2.h"',
+		},
+		out='cimgui.lua',
+		final = function(code)
+			-- gotta get rid of the imgui.h header which has c++ classes in it
+			code = code:gsub(
+				'(/%* BEGIN [^\n]*/imgui.h %*/)'
+				..'.*'
+				..'(/%* END   [^\n]*/imgui.h %*/)\n'
+				..string.patescape'struct SDL_Window;'..'\n'
+				..string.patescape'struct SDL_Renderer;'..'\n'
+				..string.patescape'typedef union SDL_Event SDL_Event;',
+				
+				"%1\n"
+				.."/* NOTICE: I can't include imgui.h since it's a C++ header with classes */\n"
+				.."%2\n"
+			
+			-- simultaneously insert require to ffi/sdl.lua
+				.."/* NOTICE: I could require 'ffi.sdl' here ... */\n"
+				.."]] require 'ffi.sdl' ffi.cdef[["
+			)
+
+			code = code .. [[
+return ffi.load'cimgui_sdl'
+]]
+			return code
+		end,
+	},
+
+	{inc='CL/cl.h', moreincs={'CL/cl_gl.h'}, out='OpenCL.lua', final=function(code)
+		code = commentOutLine(code, 'warning: Need to implement some method to align data here')
+		
+		-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
+		-- so fix it here:
+		code = code:gsub(string.patescape"]] require 'ffi.OpenCL' ffi.cdef[[\n", "")
+		
+		code = code .. [[
+local libs = ffi_OpenCL_libs or {
+	OSX = {x86 = 'OpenCL.framework/OpenCL', x64 = 'OpenCL.framework/OpenCL'},
+	Windows = {x86 = 'opencl.dll', x64 = 'opencl.dll'},
+	Linux = {
+	x86 = 'libOpenCL.so',
+	x64 = 'libOpenCL.so',
+	arm = 'bin/Linux/arm/libOpenCL.so'},
+	BSD = {x86 = 'libOpenCL.so', x64 = 'libOpenCL.so'},
+	POSIX = {x86 = 'libOpenCL.so', x64 = 'libOpenCL.so'},
+	Other = {x86 = 'libOpenCL.so', x64 = 'libOpenCL.so'},
+}
+local lib = ffi_OpenCL_lib or libs[ffi.os][ffi.arch]
+return ffi.load(lib)
+]]
+		return code
+	end},
+
+-- these external files are per-OS
+-- maybe eventually all .h's will be?
+
+
+	-- apt install libtiff-dev
+	-- also per-OS
+	-- depends: stddef.h stdint.h inttypes.h stdio.h stdarg.h
+	{inc='tiffio.h', out='Linux/tiff.lua', flags=string.trim(io.readproc'pkg-config --cflags libtiff-4')},
+
+	-- apt install libjpeg-turbo-dev
+	-- linux is using 2.1.2 which generates no different than 2.0.3
+	--  based on apt package libturbojpeg0-dev
+	-- windows is using 2.0.4 just because 2.0.3 and cmake is breaking for msvc
+	{inc='jpeglib.h', out='Linux/jpeg.lua', final=function(code)
+		code = [[
+require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
+]] .. code
+		return code
+	end},
+
+	-- inc is put last before flags
+	-- but inc is what the make_all.lua uses
+	-- so this has to be built make_all.lua GL/glext.h
+	-- but that wont work either cuz that will make the include to GL/glext.h into a split out file (maybe it should be?)
+	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
+	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
+	{inc='GL/glext.h', flags='-DGL_GLEXT_PROTOTYPES', out='Linux/GL/glext.lua'},
+	{
+		inc='GL/gl.h', 
+		moreincs={'GL/glext.h'},
+		flags='-DGL_GLEXT_PROTOTYPES',
+		out='Linux/OpenGL.lua', 
+		final=function(code)
+			code = code .. [[
+return ffi.load'GL'
+]]
+			return code
+		end,
+	},
+
+
+
 --[=[
-	-- these all have some inlined enum errors:
+-- these all have some inlined enum errors:
 	
 	-- depends on limits.h
 	{inc='dirent.h',		out='c/dirent.lua'},
@@ -426,6 +554,31 @@ return ffi.load 'cfitsio'
 
 	{inc='sys/time.h',		out='c/sys/time.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'suseconds_t')
+		return code
+	end},
+
+	-- uses a vararg macro which I don't support yet
+	{inc='sys/sysinfo.h',		out='c/sys/sysinfo.lua'},
+
+	-- "libpng requires a signed 16-bit type"
+	{inc='png.h', out='png.lua', final=function(code)
+		-- warning for redefining LLONG_MIN or something
+		code = removeWarnings(code)
+		code = [[
+-- png 1.6.37 + zlib 1.2.8
+]] .. code .. [[
+local png
+if ffi.os == 'OSX' then
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')
+elseif ffi.os == 'Windows' then
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
+elseif ffi.os == 'Linux' then
+	png = ffi.load'png'
+else               
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
+end
+return png
+]]
 		return code
 	end},
 
@@ -464,47 +617,19 @@ return ffi.load 'cfitsio'
 	lapacke.sh
 	lapack.sh
 
-	-- uses a vararg macro which I don't support yet
-	{inc='sys/sysinfo.h',		out='c/sys/sysinfo.lua'},
+--]=]
 
-
-	-- "libpng requires a signed 16-bit type"
-	{inc='png.h', out='png.lua', final=function(code)
-		-- warning for redefining LLONG_MIN or something
-		code = removeWarnings(code)
-		code = [[
--- png 1.6.37 + zlib 1.2.8
-]] .. code .. [[
-local png
-if ffi.os == 'OSX' then
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')
-elseif ffi.os == 'Windows' then
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
-elseif ffi.os == 'Linux' then
-	png = ffi.load'png'
-else               
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
-end
-return png
-]]
+--[[
+	-- not working ..
+	{inc='lua.h', out='lua.lua', flags=string.trim(io.readproc'pkg-config --cflags lua'), final=function(code)
+		--code = removeWarnings(code)
 		return code
 	end},
 
--- these are split between OS's, and a bit of a mess atm
-	
-	{inc='jpeglib.h', out='jpeg.lua'},
-
-	{inc='GL/gl.h', out='OpenGL.lua'},
-
-	-- uses pkg-config --cflags ...
-	lua.sh
-	tiff.sh
-	hdf5.sh
-	netcdf.sh
-	sdl.sh
-
-	-- takes more than one includes
-	cimgui.sh
-	OpenCL.sh
---]=]
+	-- looks like atm i'm using a hand-rolled sdl anyways
+	{inc='SDL2/SDL.h', out='sdl.lua', flags=string.trim(io.readproc'pkg-config --cflags sdl2'), final=function(code)
+		--code = removeWarnings(code)
+		return code
+	end},
+--]]
 }

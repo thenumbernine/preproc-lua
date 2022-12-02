@@ -97,7 +97,7 @@ function Preproc:init(args)
 	end
 end
 
-function Preproc:getIncludeFileCode(fn, search)
+function Preproc:getIncludeFileCode(fn, search, sys)
 	-- at position i, insert the file
 	return assert(file(fn):read(), "couldn't find file "..fn)
 end
@@ -1302,7 +1302,7 @@ function Preproc:__call(args)
 								-- but I want my include-lua project to be able to process certain dependent headers in advance
 								-- though not all ... only ones that are not dependent on the current preproc state (i.e. the system files)
 								-- so this is a delicate mess.
-								local newcode = self:getIncludeFileCode(fn, search)
+								local newcode = self:getIncludeFileCode(fn, search, sys)
 								
 								newcode = removeCommentsAndApplyContinuations(newcode)
 								local newlines = string.split(newcode, '\n')

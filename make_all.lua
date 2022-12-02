@@ -31,7 +31,34 @@ for _,inc in ipairs(includeList) do
 local ffi = require 'ffi'
 ffi.cdef[[
 ]=]
-		print(exec('luajit generate.lua "<'..inc.inc..'>" >> "'..outpath..'"'))
+		local cmd = table{
+			'luajit',
+			'generate.lua'
+		}
+		if inc.flags then
+			cmd:insert(inc.flags)
+		end
+		local function addincarg(f)
+			if f:sub(1,1) == '"' then
+				cmd:insert(('%q'):format(f))
+			elseif f:sub(1,1) == '<' then
+				cmd:insert(f)
+			else
+				cmd:insert('"<'..f..'>"')
+			end
+		end
+		addincarg(inc.inc)
+		if inc.moreincs then
+			for _,f in ipairs(inc.moreincs) do
+				addincarg(f)
+			end
+		end
+		cmd:append{
+			'>>',
+			'"'..outpath..'"',
+		}
+		cmd = cmd:concat' '
+		print(exec(cmd))
 		file(outpath):append[=[
 ]]
 ]=]

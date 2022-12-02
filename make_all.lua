@@ -23,29 +23,29 @@ end
 
 local outdir = 'results'
 for _,inc in ipairs(includeList) do
-	local outpath = outdir..'/'..inc.out
-	local dir,outfn = file(outpath):getdir()
-	file(dir):mkdir(true)
-	file(outpath):write[=[
+	if not inc.dontGen then
+		local outpath = outdir..'/'..inc.out
+		local dir,outfn = file(outpath):getdir()
+		file(dir):mkdir(true)
+		file(outpath):write[=[
 local ffi = require 'ffi'
 ffi.cdef[[
 ]=]
-	print(exec('luajit generate.lua "<'..inc.inc..'>" >> "'..outpath..'"'))
-	file(outpath):append[=[
+		print(exec('luajit generate.lua "<'..inc.inc..'>" >> "'..outpath..'"'))
+		file(outpath):append[=[
 ]]
 ]=]
-	-- if there's a final-pass on the code then do it
-	if inc.final then
-		assert(file(outpath):write(
-			assert(inc.final(
-				assert(file(outpath):read())
-			), "expected final() to return a string")
-		))
+		-- if there's a final-pass on the code then do it
+		if inc.final then
+			assert(file(outpath):write(
+				assert(inc.final(
+					assert(file(outpath):read())
+				), "expected final() to return a string")
+			))
+		end
+
+		-- verify ...
+		-- can't use -lext because that will load ffi/c stuff which could cause clashes in cdefs
+		print(exec([[luajit -e "assert(load(require 'ext.io'.readfile']]..outpath..[['))()"]]))
 	end
-
-	-- verify ...
-	-- can't use -lext because that will load ffi/c stuff which could cause clashes in cdefs
-	print(exec([[luajit -e "assert(load(require 'ext.io'.readfile']]..outpath..[['))()"]]))
-
-	break
 end

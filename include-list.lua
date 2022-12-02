@@ -255,6 +255,15 @@ end
 		return code
 	end},
 
+	{inc='stdbool.h', out='c/stdbool.lua', final=function(code)
+		-- luajit has its own bools already defined
+		code = commentOutLine(code, 'enum { bool = 0 };')
+		code = commentOutLine(code, 'enum { true = 1 };')
+		code = commentOutLine(code, 'enum { false = 0 };')
+		return code
+	end},
+
+
 -- requires manual manipulation:
 
 
@@ -268,19 +277,20 @@ end
 	-- also anything that includes this will have the line before it:
 	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
 	-- and that will have to be removed
-	{inc='bits/libc-header-start.h',	out='c/bits/libc-header-start.lua', final=function(code)
+	{dontGen=true, inc='bits/libc-header-start.h', out='c/bits/libc-header-start.lua', final=function(code)
 		return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	end},
 
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually extracted from c/setjmp.lua
-	{inc='bits/setjmp.h',	out='c/bits/setjmp.lua'},
+	{dontGen=true, inc='bits/setjmp.h', out='c/bits/setjmp.lua'},
 
-	-- stdio.h and stdarg.h both define va_list, so I put it here 
-	{inc='va_list.h', out='c/va_list.lua'},
+	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here 
+	-- but i guess it doesn't even have to be here.
+	--{dontGen=true, inc='va_list.h', out='c/va_list.lua'},
 
-	-- luajit has its own bools already defined
-	{inc='stdbool.h', out='c/stdbool.lua'},
+	-- same with just.  just a placeholder:
+	--{dontGen=true, inc='__FD_SETSIZE.h', out='c/__FD_SETSIZE.lua'},
 
 -- these come from external libraries (so I don't put them in the c/ subfolder)
 

@@ -434,6 +434,10 @@ return ffi.load'libnetcdf'
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
 		code = remove_need_macro(code, '__va_list')
+		code = code .. [[
+--return ffi.load 'hdf5'	-- pkg-config --libs hdf5
+return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
+]]
 		return code
 	end},
 

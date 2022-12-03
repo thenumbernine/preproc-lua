@@ -15,21 +15,7 @@ local incfiles
 
 
 local includeList = require 'include-list'
---[=[ can't do this without also saving all the Preproc lua state changes that occur from loading the include file
-function ThisPreproc:getIncludeFileCode(fn, search)
---io.stderr:write('#include ',fn,'\t#search ',search,'\n')
---io.stderr:flush()
-	local _, inc = table.find(includeList, nil, function(o) return o.inc == search end)
-	if inc then
-		local luainc = inc.out:match'^(.*)%.lua$':gsub('//', '.')
-		-- hmm while this is the right code ... it'll get reprocessed ...
-		return "]] require 'ffi."..luainc.."' ffi.cdef[["
-	else
-		return ThisPreproc.super.getIncludeFileCode(self, fn, search)
-	end
-end
---]=]
--- [=[ so instead i'll just
+
 -- 1) store the search => found include names, then
 function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile
@@ -38,6 +24,7 @@ function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile[fn] = sys and ('<'..search..'>') or ('"'..search..'"')
 	return ThisPreproc.super.getIncludeFileCode(self, fn, search)
 end
+
 -- 2) do a final pass replacing the BEGIN/END's of the found names
 function ThisPreproc:__call(...)
 	local code = ThisPreproc.super.__call(self, ...)
@@ -80,9 +67,51 @@ function ThisPreproc:__call(...)
 		end
 	end
 
+	-- [[ 
+	-- split off all {'s into newlines?
+	lines = newlines
+	newlines = table()
+	for _,l in ipairs(lines) do
+		if l:match'^/%*.*%*/$' then
+			newlines:insert(l)
+		else
+			l = string.trim(l)
+			local i = 1
+			i = l:find('{', i)
+			if not i then
+				newlines:insert(l)
+			else
+				local j = l:find('}', i+1)
+				if j then
+					newlines:insert(l)
+				else
+					newlines:insert(l:sub(1,i))
+					l = string.trim(l:sub(i+1))
+					--i = l:find('{', i+1)
+					if l ~= '' then
+						newlines:insert(l)
+					end
+				end
+			end
+		end
+	end
+	-- add the tab
+	lines = newlines
+	newlines = table()
+	local intab
+	for _,l in ipairs(lines) do
+		if l:match'^/%*.*%*/$' then
+			newlines:insert(l)
+		else
+			if l:sub(1,1) == '}' then intab = false end
+			newlines:insert(intab and '\t'..l or l)
+			if l:sub(-1) == '{' then intab = true end
+		end
+	end
+	--]]
+
 	return newlines:concat'\n'
 end
---]=]
 
 
 --]===============] end the code for injecting require()'s to previously-generated luajit files

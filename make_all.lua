@@ -59,6 +59,12 @@ ffi.cdef[[
 				addincarg(f)
 			end
 		end
+		if inc.skipincs then
+			for _,f in ipairs(inc.skipincs) do
+				cmd:insert'-skip'
+				addincarg(f)
+			end
+		end
 		cmd:append{
 			'>>',
 			'"'..outpath..'"',

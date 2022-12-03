@@ -451,24 +451,17 @@ return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
 			'"imgui_impl_sdl.h"',
 			'"imgui_impl_opengl2.h"',
 		},
+		skipincs={'"imgui.h"'},	-- full of C++ so don't include it
 		out='cimgui.lua',
 		final = function(code)
-			-- gotta get rid of the imgui.h header which has c++ classes in it
+			-- this is already in SDL 
 			code = code:gsub(
-				'(/%* BEGIN [^\n]*/imgui.h %*/)'
-				..'.*'
-				..'(/%* END   [^\n]*/imgui.h %*/)\n'
-				..string.patescape'struct SDL_Window;'..'\n'
+				string.patescape'struct SDL_Window;'..'\n'
 				..string.patescape'struct SDL_Renderer;'..'\n'
 				..string.patescape'typedef union SDL_Event SDL_Event;',
 				
-				"%1\n"
-				.."/* NOTICE: I can't include imgui.h since it's a C++ header with classes */\n"
-				.."%2\n"
-			
-			-- simultaneously insert require to ffi/sdl.lua
-				.."/* NOTICE: I could require 'ffi.sdl' here ... */\n"
-				.."]] require 'ffi.sdl' ffi.cdef[["
+				-- simultaneously insert require to ffi/sdl.lua
+				"]] require 'ffi.sdl' ffi.cdef[["
 			)
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')

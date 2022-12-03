@@ -10,6 +10,8 @@ local includeList = require 'include-list'
 local req = ...
 if not req then error("make_all.lua all for all, or make_all.lua <some filename>") end
 if req ~= 'all' then
+	-- TODO seems using <> or "" now is essential for excluding recursive require's
+	if req:sub(1,1) ~= '<' and req:sub(1,1) ~= '"' then error("gotta be system or user include space") end
 	print('searching for '..req)
 	includeList = table.filter(includeList, function(inc)
 		--return inc.inc:match(req)
@@ -48,7 +50,7 @@ ffi.cdef[[
 			elseif f:sub(1,1) == '<' then
 				cmd:insert('"'..f..'"')
 			else
-				cmd:insert('"<'..f..'>"')
+				error'inc /moreincs needs <> or "" wrapper'
 			end
 		end
 		addincarg(inc.inc)

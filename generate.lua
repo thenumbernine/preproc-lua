@@ -58,8 +58,7 @@ function ThisPreproc:__call(...)
 					-- if beginfile is one of the manually-included files then don't replace it here.
 					if not incfiles:find(search) then
 						-- if it's found in includeList then ...
-						local searchname = search:sub(2,-2)
-						local _, inc = table.find(includeList, nil, function(o) return o.inc == searchname end)
+						local _, inc = table.find(includeList, nil, function(o) return o.inc == search end)
 						if inc then
 							currentfile = beginfile
 							currentluainc = inc.out:match'^(.*)%.lua$':gsub('/', '.')

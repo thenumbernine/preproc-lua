@@ -417,6 +417,10 @@ local function isInString(line, j, k, checkingIncludeString)
 	return true
 end
 
+local function overlaps(a, b)
+	return a[1] <= b[2] and b[1] <= a[2]
+end
+
 --[[
 argsonly = set to true to only expand macros that have arguments
 useful for if evaluation
@@ -481,7 +485,7 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 			--]]
 			-- [[
 			for _,key in ipairs(table.keys(macros):sort()) do
-				if not alreadyReplaced[key] then
+				do--if not alreadyReplaced[key] then
 					local v = macros[key]
 				--]]
 
@@ -489,28 +493,34 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 					if type(v) == 'table' then
 						local j, k, paramMap = self:handleMacroWithArgs(l, key, v.params)
 						if j then
+							if alreadyReplaced[key]
+							and overlaps(alreadyReplaced[key], {j,k})
+							then
+--print('...but its in a previously-recursively-expanded location')
+							else
 --print('replacing with params', tolua(v))
-							-- now replace all of v.params strings with params
-							local def = self:replaceMacros(v.def, paramMap, alsoDefined)
-							--[[
-							TODO space or nospace?
-							nospace = good for ## operator
-							space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
-								gcc stdint.h:
-								#define __GLIBC_USE(F)	__GLIBC_USE_ ## F
-							I guess this is helping me make up my mind
-							--]]
-							local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
-							def = def:gsub('##', concatMarker)
-							local origl = l
-							l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
-							l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
+								-- now replace all of v.params strings with params
+								local def = self:replaceMacros(v.def, paramMap, alsoDefined)
+								--[[
+								TODO space or nospace?
+								nospace = good for ## operator
+								space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
+									gcc stdint.h:
+									#define __GLIBC_USE(F)	__GLIBC_USE_ ## F
+								I guess this is helping me make up my mind
+								--]]
+								local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
+								def = def:gsub('##', concatMarker)
+								local origl = l
+								l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
+								l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
 --print('from', origl, 'to', l)
-							-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-							if l ~= origl then
-								found = true
+								-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
+								if l ~= origl then
+									found = true
+								end
+								break
 							end
-							break
 						end
 					else
 						-- handle macro without args
@@ -525,23 +535,37 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 							and not after:match'[_a-zA-Z0-9]'
 							then
 --print('found macro', key)
+								if alreadyReplaced[key]
+								and overlaps(alreadyReplaced[key], {j,k})
+								then
+--print('...but its in a previously-recursively-expanded location')
+									-- don't expand
+								else						
 --print('replacing with', v)
-								-- if the macro has params then expect a parenthesis after k
-								-- and replace all the instances of v's params in v'def with the values in those parenthesis
+									-- if the macro has params then expect a parenthesis after k
+									-- and replace all the instances of v's params in v'def with the values in those parenthesis
 
-								-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
-								--local origl = l
-								l = l:sub(1,j-1) .. v .. l:sub(k+1)
+									-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
+--local origl = l
+									l = l:sub(1,j-1) .. v .. l:sub(k+1)
 --print('from', origl, 'to', l)
-								-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-								if l ~= origl then
-									found = true
+									-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
+									if l ~= origl then
+										found = true
+									end
+									-- but this won't stop if you have #define x A.x ... in which case you could still get stuck in a loop
+									-- instead I gotta make it so it just doesn't expand a second time
+									-- TODO do this for parameter-based macros also? #define x(y) A.x(y+1) ?
+									--
+									-- ok this is causing trouble with expressions, because it's preventing multiple expressions of the same macro from being expanded.
+									-- which makes me suspicious maybe I have to evaluate expressions macro-at-a-time?  but that means buliding a giant macro-dependency graph? 
+									-- so I really only want to do this in self-referencing macros
+									--
+									-- so really we want to only not twice replace in the string region that the first macro expanded .... 
+									-- ... smh
+									alreadyReplaced[key] = {j, j+#v-1}
+									break
 								end
-								-- but this won't stop if you have #define x A.x ... in which case you could still get stuck in a loop
-								-- instead I gotta make it so it just doesn't expand a second time
-								-- TODO do this for parameter-based macros also? #define x(y) A.x(y+1) ?
-								alreadyReplaced[key] = true
-								break
 							end
 						end
 					end

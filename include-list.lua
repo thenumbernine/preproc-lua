@@ -57,15 +57,15 @@ end
 
 
 return {
-	{inc='stddef.h',		out='c/stddef.lua'},
-	{inc='features.h',		out='c/features.lua'},
-	{inc='bits/endian.h',	out='c/bits/endian.lua'},
-	{inc='bits/types/locale_t.h',	out='c/bits/types/locale_t.lua'},
-	{inc='bits/types/__sigset_t.h',	out='c/bits/types/__sigset_t.lua'},
+	{inc='<stddef.h>', out='c/stddef.lua'},
+	{inc='<features.h>',		out='c/features.lua'},
+	{inc='<bits/endian.h>',	out='c/bits/endian.lua'},
+	{inc='<bits/types/locale_t.h>',	out='c/bits/types/locale_t.lua'},
+	{inc='<bits/types/__sigset_t.h>',	out='c/bits/types/__sigset_t.lua'},
 	
 	-- depends: features.h
-	{inc='bits/floatn.h',	out='c/bits/floatn.lua'},	
-	{inc='bits/types.h', out='c/bits/types.lua', final=function(code)
+	{inc='<bits/floatn.h>',	out='c/bits/floatn.lua'},	
+	{inc='<bits/types.h>', out='c/bits/types.lua', final=function(code)
 		-- manually: 
 		-- `enum { __FD_SETSIZE = 1024 };`
 		-- has to be replaced with 
@@ -79,29 +79,29 @@ return {
 	end},
 	
 	-- depends: bits/types.h
-	{inc='bits/stdint-intn.h',	out='c/bits/stdint-intn.lua'},
-	{inc='bits/types/clockid_t.h',	out='c/bits/types/clockid_t.lua'},
-	{inc='bits/types/clock_t.h',	out='c/bits/types/clock_t.lua'},
-	{inc='bits/types/struct_timeval.h',	out='c/bits/types/struct_timeval.lua'},
-	{inc='bits/types/timer_t.h',	out='c/bits/types/timer_t.lua'},
-	{inc='bits/types/time_t.h',	out='c/bits/types/time_t.lua'},
+	{inc='<bits/stdint-intn.h>',	out='c/bits/stdint-intn.lua'},
+	{inc='<bits/types/clockid_t.h>',	out='c/bits/types/clockid_t.lua'},
+	{inc='<bits/types/clock_t.h>',	out='c/bits/types/clock_t.lua'},
+	{inc='<bits/types/struct_timeval.h>',	out='c/bits/types/struct_timeval.lua'},
+	{inc='<bits/types/timer_t.h>',	out='c/bits/types/timer_t.lua'},
+	{inc='<bits/types/time_t.h>',	out='c/bits/types/time_t.lua'},
 
 	-- depends: bits/types.h bits/endian.h
-	{inc='bits/types/struct_timespec.h',	out='c/bits/types/struct_timespec.lua'},
+	{inc='<bits/types/struct_timespec.h>',	out='c/bits/types/struct_timespec.lua'},
 	
-	{inc='sys/ioctl.h', out='c/sys/ioctl.lua'},
+	{inc='<sys/ioctl.h>', out='c/sys/ioctl.lua'},
 
-	{inc='sys/select.h', out='c/sys/select.lua', final=function(code)
+	{inc='<sys/select.h>', out='c/sys/select.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'suseconds_t')
 		return code
 	end},
 
 	-- depends: features.h bits/types.h
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
-	{inc='sys/termios.h',		out='c/sys/termios.lua'},
+	{inc='<sys/termios.h>',		out='c/sys/termios.lua'},
 
 	-- depends: bits/types.h etc
-	{inc='sys/stat.h', out='c/sys/stat.lua', final=function(code)
+	{inc='<sys/stat.h>', out='c/sys/stat.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
@@ -109,7 +109,7 @@ return {
 	end},
 
 	-- depends: features.h bits/types.h sys/select.h
-	{inc='sys/types.h', out='c/sys/types.lua', final=function(code)
+	{inc='<sys/types.h>', out='c/sys/types.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
@@ -125,7 +125,7 @@ return {
 	-- and that comes with a giant can of worms of how i'm handling cdef numbers vs macro defs vs lua numbers ...
 	-- mind you I could just make the warning: output into a comment 
 	--  and there would be no need for manual manipulation here
-	{inc='limits.h',		out='c/limits.lua', final=function(code)
+	{inc='<limits.h>',		out='c/limits.lua', final=function(code)
 		-- warning for redefining LLONG or something
 		code = removeWarnings(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
@@ -133,7 +133,7 @@ return {
 	end},
 
 	-- depends: features.h sys/types.h
-	{inc='stdlib.h', out='c/stdlib.lua', final=function(code)
+	{inc='<stdlib.h>', out='c/stdlib.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'wchar_t')
@@ -142,10 +142,10 @@ return {
 	end},
 	
 	-- depends: features.h, bits/types/__sigset_t.h
-	{inc='setjmp.h',		out='c/setjmp.lua'},
+	{inc='<setjmp.h>',		out='c/setjmp.lua'},
 
 	-- depends on features.h
-	{inc='errno.h',		out='c/errno.lua', final=function(code)
+	{inc='<errno.h>',		out='c/errno.lua', final=function(code)
 		-- manually add the 'errno' macro at the end:
 		code = code .. [[
 return setmetatable({
@@ -160,7 +160,7 @@ return setmetatable({
 	end},
 
 	-- depends: features.h bits/types.h
-	{inc='unistd.h',		out='c/unistd.lua', final=function(code)
+	{inc='<unistd.h>',		out='c/unistd.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
@@ -200,19 +200,21 @@ end
 	end},
 
 	-- depends: stddef.h bits/types/time_t.h bits/types/struct_timespec.h
-	{inc='sched.h',		out='c/sched.lua', final=function(code)
+	{inc='<sched.h>',		out='c/sched.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'pid_t')
+		code = remove_need_macro(code, 'size_t')
+		code = remove_need_macro(code, 'NULL')
 		return code
 	end},
 	
 	-- depends: bits/types.h
-	{inc='stdint.h',	out='c/stdint.lua', final=function(code)
+	{inc='<stdint.h>',	out='c/stdint.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		return code
 	end},
 
 	-- depends: features.h stddef.h bits/libc-header-start.h
-	{inc='string.h', out='c/string.lua', final=function(code)
+	{inc='<string.h>', out='c/string.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
@@ -221,7 +223,7 @@ end
 
 	-- depends: features.h stddef.h bits/types.h and too many really
 	-- this and any other file that requires stddef might have these lines which will have to be removed:
-	{inc='time.h',		out='c/time.lua', final=function(code)
+	{inc='<time.h>',		out='c/time.lua', final=function(code)
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
 		code = replace_bits_types_builtin(code, 'pid_t')
@@ -229,7 +231,7 @@ end
 	end},
 
 	-- depends on too much
-	{inc='stdarg.h',		out='c/stdarg.lua', final=function(code)
+	{inc='<stdarg.h>',		out='c/stdarg.lua', final=function(code)
 		-- stdio.h and stdarg.h both define this
 		-- typedef __gnuc_va_list va_list;
 		-- enum { _VA_LIST_DEFINED = 1 };
@@ -240,12 +242,13 @@ end
 	end},
 
 	-- depends on too much
-	{inc='stdio.h',	out='c/stdio.lua', final=function(code)
+	{inc='<stdio.h>',	out='c/stdio.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = replace_bits_types_builtin(code, 'off_t')
 		code = replace_bits_types_builtin(code, 'ssize_t')
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
+		code = remove_need_macro(code, '__va_list')
 		code = remove_VA_LIST_DEFINED(code)
 		code = replace_va_list_require(code)
 		-- this all stems from #define stdin stdin etc
@@ -256,7 +259,7 @@ end
 		return code
 	end},
 
-	{inc='stdbool.h', out='c/stdbool.lua', final=function(code)
+	{inc='<stdbool.h>', out='c/stdbool.lua', final=function(code)
 		-- luajit has its own bools already defined
 		code = commentOutLine(code, 'enum { bool = 0 };')
 		code = commentOutLine(code, 'enum { true = 1 };')
@@ -265,7 +268,7 @@ end
 	end},
 
 	-- depends: features.h stdint.h
-	{inc='inttypes.h', out='c/inttypes.lua'},
+	{inc='<inttypes.h>', out='c/inttypes.lua'},
 
 
 -- requires manual manipulation:
@@ -281,39 +284,44 @@ end
 	-- also anything that includes this will have the line before it:
 	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
 	-- and that will have to be removed
-	{dontGen=true, inc='bits/libc-header-start.h', out='c/bits/libc-header-start.lua', final=function(code)
+	{dontGen=true, inc='<bits/libc-header-start.h>', out='c/bits/libc-header-start.lua', final=function(code)
 		return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	end},
 
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually extracted from c/setjmp.lua
-	{dontGen=true, inc='bits/setjmp.h', out='c/bits/setjmp.lua'},
+	{dontGen=true, inc='<bits/setjmp.h>', out='c/bits/setjmp.lua'},
 
 	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here 
 	-- but i guess it doesn't even have to be here.
-	--{dontGen=true, inc='va_list.h', out='c/va_list.lua'},
+	--{dontGen=true, inc='<va_list.h>', out='c/va_list.lua'},
 
 	-- same with just.  just a placeholder:
-	--{dontGen=true, inc='__FD_SETSIZE.h', out='c/__FD_SETSIZE.lua'},
+	--{dontGen=true, inc='<__FD_SETSIZE.h>', out='c/__FD_SETSIZE.lua'},
 
 -- these come from external libraries (so I don't put them in the c/ subfolder)
 
 
-	{inc='zlib.h',		out='zlib.lua', final=function(code)
-		-- LLONG_MIN warning
-		code = removeWarnings(code)
-		-- getting around the FAR stuff
-		-- why am I generating an enum for it?
-		-- and now just replace the rest with nothing
-		code = code:gsub('enum { FAR = 1 };\n', '')
-		code = code:gsub(' FAR ', ' ')
-		-- same deal with z_off_t
-		-- my preproc => luajit can't handle defines that are working in place of typedefs
-		code = code:gsub('enum { z_off_t = 0 };\n', '')
-		code = code:gsub('z_off_t', 'off_t')
-		
-		-- add some macros onto the end manually
-		code = code .. [[
+	{
+		inc='<zlib.h>',
+		out='zlib.lua',
+		final=function(code)
+			-- LLONG_MIN warning
+			code = removeWarnings(code)
+			-- getting around the FAR stuff
+			-- why am I generating an enum for it?
+			-- and now just replace the rest with nothing
+			code = code:gsub('enum { FAR = 1 };\n', '')
+			code = code:gsub(' FAR ', ' ')
+			-- same deal with z_off_t
+			-- my preproc => luajit can't handle defines that are working in place of typedefs
+			code = code:gsub('enum { z_off_t = 0 };\n', '')
+			code = code:gsub('z_off_t', 'off_t')
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			
+			-- add some macros onto the end manually
+			code = code .. [[
 
 local zlib = ffi.load'z'
 local wrapper
@@ -354,11 +362,12 @@ wrapper = setmetatable({
 })
 return wrapper
 ]]
-		return code
-	end},
+			return code
+		end,
+	},
 
 	-- apt install libffi-dev
-	{inc='ffi.h', out='libffi.lua', final=function(code)
+	{inc='<ffi.h>', out='libffi.lua', final=function(code)
 		code = removeWarnings(code)	-- LLONG_MIN
 		code = [[
 -- WARNING, this is libffi, not luajit ffi
@@ -371,7 +380,7 @@ return ffi.load'ffi'
 
 	-- depends: stdbool.h
 	-- apt install libgif-dev
-	{inc='gif_lib.h', out='gif.lua', final=function(code)
+	{inc='<gif_lib.h>', out='gif.lua', final=function(code)
 		code = [[
 -- gif 5.1.9
 ]] .. code .. [[
@@ -390,11 +399,15 @@ return gif
 		return code
 	end},
 
-	{inc='fitsio.h', out='fitsio.lua', final=function(code)
+	{inc='<fitsio.h>', out='fitsio.lua', final=function(code)
 		code = removeWarnings(code)	-- LLONG_MIN
 		-- OFF_T is define'd to off_t soo ...
 		code = code:gsub('enum { OFF_T = 0 };\n', '')
 		code = code:gsub('OFF_T', 'off_t')
+		code = remove_need_macro(code, 'size_t')
+		code = remove_need_macro(code, 'NULL')
+		code = remove_need_macro(code, 'wchar_t')
+		code = remove_need_macro(code, '__va_list')
 		code = code .. [[
 return ffi.load 'cfitsio'
 ]]
@@ -402,7 +415,7 @@ return ffi.load 'cfitsio'
 	end},
 
 	-- apt install libnetcdf-dev
-	{inc='netcdf.h', out='netcdf.lua', flags=string.trim(io.readproc'pkg-config --cflags netcdf'), final=function(code)
+	{inc='<netcdf.h>', out='netcdf.lua', flags=string.trim(io.readproc'pkg-config --cflags netcdf'), final=function(code)
 		code = code .. [[
 return ffi.load'libnetcdf'
 ]]
@@ -411,13 +424,16 @@ return ffi.load'libnetcdf'
 
 	-- apt install libhdf5-dev
 	-- depends: inttypes.h
-	{inc='hdf5.h', out='hdf5.lua', flags=string.trim(io.readproc'pkg-config --cflags hdf5'), final=function(code)
+	{inc='<hdf5.h>', out='hdf5.lua', flags=string.trim(io.readproc'pkg-config --cflags hdf5'), final=function(code)
 		-- old header comment:
 			-- for gcc / ubuntu looks like off_t is defined in either unistd.h or stdio.h, and either are set via testing/setting __off_t_defined
 			-- in other words, the defs in here are getting more and more conditional ...
 			-- pretty soon a full set of headers + full preprocessor might be necessary
 			-- TODO regen this on Windows and compare?
 		code = removeWarnings(code)	-- LLONG_MIN
+		code = remove_need_macro(code, 'size_t')
+		code = remove_need_macro(code, 'NULL')
+		code = remove_need_macro(code, '__va_list')
 		return code
 	end},
 
@@ -450,6 +466,9 @@ return ffi.load'libnetcdf'
 				.."/* NOTICE: I could require 'ffi.sdl' here ... */\n"
 				.."]] require 'ffi.sdl' ffi.cdef[["
 			)
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
 
 			code = code .. [[
 return ffi.load'cimgui_sdl'
@@ -458,7 +477,7 @@ return ffi.load'cimgui_sdl'
 		end,
 	},
 
-	{inc='CL/cl.h', moreincs={'CL/cl_gl.h'}, out='OpenCL.lua', final=function(code)
+	{inc='<CL/cl.h>', moreincs={'<CL/cl_gl.h>'}, out='OpenCL.lua', final=function(code)
 		code = commentOutLine(code, 'warning: Need to implement some method to align data here')
 		
 		-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
@@ -490,13 +509,23 @@ return ffi.load(lib)
 	-- apt install libtiff-dev
 	-- also per-OS
 	-- depends: stddef.h stdint.h inttypes.h stdio.h stdarg.h
-	{inc='tiffio.h', out='Linux/tiff.lua', flags=string.trim(io.readproc'pkg-config --cflags libtiff-4')},
+	{
+		inc='<tiffio.h>',
+		out='Linux/tiff.lua',
+		flags=string.trim(io.readproc'pkg-config --cflags libtiff-4'),
+		final=function(code)
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
+			return code
+		end,
+	},
 
 	-- apt install libjpeg-turbo-dev
 	-- linux is using 2.1.2 which generates no different than 2.0.3
 	--  based on apt package libturbojpeg0-dev
 	-- windows is using 2.0.4 just because 2.0.3 and cmake is breaking for msvc
-	{inc='jpeglib.h', out='Linux/jpeg.lua', final=function(code)
+	{inc='<jpeglib.h>', out='Linux/jpeg.lua', final=function(code)
 		code = [[
 require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
 ]] .. code
@@ -509,10 +538,9 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 	-- but that wont work either cuz that will make the include to GL/glext.h into a split out file (maybe it should be?)
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
-	{inc='GL/glext.h', flags='-DGL_GLEXT_PROTOTYPES', out='Linux/GL/glext.lua'},
 	{
-		inc='GL/gl.h', 
-		moreincs={'GL/glext.h'},
+		inc='<GL/gl.h>', 
+		moreincs={'<GL/glext.h>'},
 		flags='-DGL_GLEXT_PROTOTYPES',
 		out='Linux/OpenGL.lua', 
 		final=function(code)
@@ -529,12 +557,12 @@ return ffi.load'GL'
 -- these all have some inlined enum errors:
 	
 	-- depends on limits.h
-	{inc='dirent.h',		out='c/dirent.lua'},
+	{inc='<dirent.h>',		out='c/dirent.lua'},
 	
 	-- depends: sched.h time.h
-	{inc='pthread.h',		out='c/pthread.lua'},
+	{inc='<pthread.h>',		out='c/pthread.lua'},
 
-	{inc='sys/param.h', out='c/sys/param.lua', final=function(code)
+	{inc='<sys/param.h>', out='c/sys/param.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
 		code = commentOutLine(code, 'enum { SIGIO = 0 };')
@@ -552,16 +580,16 @@ return ffi.load'GL'
 		return code
 	end}
 
-	{inc='sys/time.h',		out='c/sys/time.lua', final=function(code)
+	{inc='<sys/time.h>',		out='c/sys/time.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'suseconds_t')
 		return code
 	end},
 
 	-- uses a vararg macro which I don't support yet
-	{inc='sys/sysinfo.h',		out='c/sys/sysinfo.lua'},
+	{inc='<sys/sysinfo.h>',		out='c/sys/sysinfo.lua'},
 
 	-- "libpng requires a signed 16-bit type"
-	{inc='png.h', out='png.lua', final=function(code)
+	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
 		code = [[
@@ -587,7 +615,7 @@ return png
 	-- depends on bits/libc-header-start
 	-- '<identifier>' expected near '_Complex' at line 2
 	-- has to do with enum/define'ing the builtin word _Complex
-	{inc='complex.h', out='c/complex.lua', final=function(code)
+	{inc='<complex.h>', out='c/complex.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = commentOutLine(code, 'enum { _Complex = 0 };')
 		code = commentOutLine(code, 'enum { complex = 0 };')
@@ -608,7 +636,7 @@ return png
 
 
 	-- depends on complex.h
-	{inc='cblas.h', out='cblas.lua', final=function(code)
+	{inc='<cblas.h>', out='cblas.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		return code
 	end},
@@ -617,24 +645,44 @@ return png
 	lapacke.sh
 	lapack.sh
 
+--]=]
+
 	-- not working ..
 	-- "numeric float type not defined"
 	{
-		inc='lua.h',
-		--inc='<lua.h>', 
+		inc='<lua.h>',
+		moreincs={'<lualib.h>', '<lauxlib.h>'},
 		out='lua.lua', 
-		--flags=string.trim(io.readproc'pkg-config --cflags lua'),
+		flags=string.trim(io.readproc'pkg-config --cflags lua'),
 		final=function(code)
-			--code = removeWarnings(code)
+			code = removeWarnings(code)	-- LLONG_MIN
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
+			code = [[
+-- lua 5.4
+]] .. code .. [[
+local lua
+if ffi.os == 'OSX' then
+	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/liblua.dylib')
+elseif ffi.os == 'Windows' then
+	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/liblua1.dll')
+elseif ffi.os == 'Linux' then
+	-- TODO pkg-config --libs lua ?
+	lua = ffi.load'lua'
+else
+	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/liblua.so')
+end
+return lua
+]]
 			return code
 		end,
 	},
 
---]=]
-	
+
 --[[
 	-- looks like atm i'm using a hand-rolled sdl anyways
-	{inc='SDL2/SDL.h', out='sdl.lua', flags=string.trim(io.readproc'pkg-config --cflags sdl2'), final=function(code)
+	{inc='<SDL2/SDL.h>', out='sdl.lua', flags=string.trim(io.readproc'pkg-config --cflags sdl2'), final=function(code)
 		--code = removeWarnings(code)
 		return code
 	end},

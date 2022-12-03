@@ -15,7 +15,7 @@ end
 local function replace_bits_types_builtin(code, ctype)
 	code = code:gsub(string.patescape([[
 typedef __]]..ctype..[[ ]]..ctype..[[;
-enum { __]]..ctype..[[_defined = 1 };]]), 
+enum { __]]..ctype..[[_defined = 1 };]]),
 		[=[]] require 'ffi.c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
 	)
 	return code
@@ -41,8 +41,8 @@ local function replace_va_list_require(code)
 end
 
 -- TODO keeping warnings as comments seems nice
---  but they insert at the first line 
---  which runs the risk of bumping the first line skip of BEGIN ... 
+--  but they insert at the first line
+--  which runs the risk of bumping the first line skip of BEGIN ...
 --  which could replcae the whole file with a require()
 local function removeWarnings(code)
 	return code:gsub('warning:[^\n]*\n', '')
@@ -64,11 +64,11 @@ return {
 	{inc='<bits/types/__sigset_t.h>',	out='c/bits/types/__sigset_t.lua'},
 	
 	-- depends: features.h
-	{inc='<bits/floatn.h>',	out='c/bits/floatn.lua'},	
+	{inc='<bits/floatn.h>',	out='c/bits/floatn.lua'},
 	{inc='<bits/types.h>', out='c/bits/types.lua', final=function(code)
-		-- manually: 
+		-- manually:
 		-- `enum { __FD_SETSIZE = 1024 };`
-		-- has to be replaced with 
+		-- has to be replaced with
 		-- `]] require 'ffi.c.__FD_SETSIZE' ffi.cdef[[`
 		-- because it's a macro that appears in a few places, so I manually define it.
 		-- (and maybe also write the file?)
@@ -121,9 +121,9 @@ return {
 
 	-- depends: bits/libc-header-start.h
 	-- with this the preproc gets a warning:
-	--  warning: redefining LLONG_MIN from -1 to -9.2233720368548e+18 (originally (-LLONG_MAX - 1LL)) 
+	--  warning: redefining LLONG_MIN from -1 to -9.2233720368548e+18 (originally (-LLONG_MAX - 1LL))
 	-- and that comes with a giant can of worms of how i'm handling cdef numbers vs macro defs vs lua numbers ...
-	-- mind you I could just make the warning: output into a comment 
+	-- mind you I could just make the warning: output into a comment
 	--  and there would be no need for manual manipulation here
 	{inc='<limits.h>',		out='c/limits.lua', final=function(code)
 		-- warning for redefining LLONG or something
@@ -277,9 +277,9 @@ end
 	-- depends: features.h
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually created
-	-- 
+	--
 	-- they run into the "never include this file directly" preproc error
-	-- so you'll have to manually cut out the generated macros from another file 
+	-- so you'll have to manually cut out the generated macros from another file
 	--  and insert the code into a file in the results folder
 	-- also anything that includes this will have the line before it:
 	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
@@ -292,7 +292,7 @@ end
 	-- it must be manually extracted from c/setjmp.lua
 	{dontGen=true, inc='<bits/setjmp.h>', out='c/bits/setjmp.lua'},
 
-	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here 
+	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here
 	-- but i guess it doesn't even have to be here.
 	--{dontGen=true, inc='<va_list.h>', out='c/va_list.lua'},
 
@@ -391,7 +391,7 @@ elseif ffi.os == 'Windows' then
 	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/libgif1.dll')
 elseif ffi.os == 'Linux' then
 	gif = ffi.load'gif'
-else               
+else
 	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libgif.so')
 end
 return gif
@@ -539,10 +539,10 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc='<GL/gl.h>', 
+		inc='<GL/gl.h>',
 		moreincs={'<GL/glext.h>'},
 		flags='-DGL_GLEXT_PROTOTYPES',
-		out='Linux/OpenGL.lua', 
+		out='Linux/OpenGL.lua',
 		final=function(code)
 			code = code .. [[
 return ffi.load'GL'
@@ -602,7 +602,7 @@ elseif ffi.os == 'Windows' then
 	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
 elseif ffi.os == 'Linux' then
 	png = ffi.load'png'
-else               
+else
 	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
 end
 return png
@@ -621,12 +621,12 @@ return png
 		code = commentOutLine(code, 'enum { complex = 0 };')
 		-- this uses define<=>typedef which always has some trouble
 		-- and this uses redefines which luajit ffi cant do so...
-		-- TODO from 
+		-- TODO from
 		--  /* # define _Mdouble_complex_ _Mdouble_ _Complex ### string, not number "_Mdouble_ _Complex" */
 		-- to
 		--  /* redefining matching value: #define _Mdouble_\t\tfloat */
 		-- replace 	_Mdouble_complex_ with double _Complex
-		-- from there to 
+		-- from there to
 		--  /* # define _Mdouble_       long double ### string, not number "long double" */
 		-- replace _Mdouble_complex_ with float _Complex
 		-- and from there until then end
@@ -652,7 +652,7 @@ return png
 	{
 		inc='<lua.h>',
 		moreincs={'<lualib.h>', '<lauxlib.h>'},
-		out='lua.lua', 
+		out='lua.lua',
 		flags=string.trim(io.readproc'pkg-config --cflags lua'),
 		final=function(code)
 			code = removeWarnings(code)	-- LLONG_MIN

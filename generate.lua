@@ -9,7 +9,7 @@ local Preproc = require 'preproc'
 local ThisPreproc = class(Preproc)
 
 -- this is assigned below when args are processed
-local incfiles 
+local incfiles
 
 -- [===============[ begin the code for injecting require()'s to previously-generated luajit files
 
@@ -29,8 +29,8 @@ function ThisPreproc:getIncludeFileCode(fn, search)
 	end
 end
 --]=]
--- [=[ so instead i'll just 
--- 1) store the search => found include names, then 
+-- [=[ so instead i'll just
+-- 1) store the search => found include names, then
 function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile
 		= self.mapFromIncludeToSearchFile
@@ -44,12 +44,12 @@ function ThisPreproc:__call(...)
 	local lines = string.split(code, '\n')
 
 	local currentfile
-	local currentluainc 
+	local currentluainc
 	local newlines = table()
 	for i,l in ipairs(lines) do
-		-- skip the first BEGIN, cuz this is the BEGIN for the include we are currently generating.  
+		-- skip the first BEGIN, cuz this is the BEGIN for the include we are currently generating.
 		-- dont wanna swap out the whole thing
-		if not currentfile then 
+		if not currentfile then
 			local beginfile = l:match'^/%* BEGIN (.*) %*/$'
 			if beginfile then
 				local search = self.mapFromIncludeToSearchFile[beginfile]

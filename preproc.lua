@@ -53,6 +53,15 @@ end
 
 local Preproc = class()
 
+--[[
+true = insert the define-to-enums at the end of the file
+false = insert the define-to-enums inline as they're found (screws up in some .h files that #define matching macros inline with their enums)
+TODO this messes up the include file begin/end comments, which lots of processing depends upon
+ would be better if I just pushed these define-to-enum insertions until after the C enum
+TODO DONT USE THIS.
+--]]
+Preproc.addDefinesAsEnumsLast = false
+
 -- whether, as a final pass, we combine non-semicolon lines
 Preproc.joinNonSemicolonLines = true
 
@@ -82,6 +91,11 @@ function Preproc:init(args)
 		__restrict = '',
 		__restrict__ = '',
 	}
+
+	if args then
+		self.addDefinesAsEnumsLast = args.addDefinesAsEnumsLast
+	end
+	self.definesAsEnumsLast = table()
 
 	-- the INCLUDE env var is for <> and not "", right?
 	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ...
@@ -151,7 +165,12 @@ function Preproc:getDefineCode(k, v, l)
 				if not v:match'%.'		-- no floats
 				and not v:match'%de[+-]%d'	-- no exps
 				then
-					return 'enum { '..k..' = '..v..' };'
+					if self.addDefinesAsEnumsLast then
+						self.definesAsEnumsLast:insert('enum { '..k..' = '..v..' };')
+						return ''
+					else
+						return 'enum { '..k..' = '..v..' };'
+					end
 				else
 					return '/* '..l..' ### string, number, replaceline '..tolua(v)..' */'
 				end
@@ -162,7 +181,12 @@ function Preproc:getDefineCode(k, v, l)
 		else
 			-- string but not number ...
 			if v == '' then
-				return 'enum { '..k..' = 1 };'
+				if self.addDefinesAsEnumsLast then
+					self.definesAsEnumsLast:insert('enum { '..k..' = 1 };')
+					return ''
+				else
+					return 'enum { '..k..' = 1 };'
+				end
 			else
 				return '/* '..l..' ### string, not number '..tolua(v)..' */'
 			end
@@ -1550,6 +1574,12 @@ function Preproc:__call(args)
 		lines:insert(1, 'enum { '..k..' = '..v..' };')
 	end
 	--]]
+
+	if self.addDefinesAsEnumsLast then
+		for _,enumdef in ipairs(self.definesAsEnumsLast) do
+			lines:insert(enumdef)
+		end
+	end
 
 	code = lines:concat'\n'
 

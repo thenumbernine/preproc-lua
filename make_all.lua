@@ -65,6 +65,9 @@ ffi.cdef[[
 				addincarg(f)
 			end
 		end
+		if inc.addDefinesAsEnumsLast then
+			cmd:insert'-addDefinesAsEnumsLast'
+		end
 		cmd:append{
 			'>>',
 			'"'..outpath..'"',

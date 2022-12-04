@@ -59,7 +59,7 @@ end
 
 return {
 	{inc='<stddef.h>', out='c/stddef.lua'},
-	{inc='<features.h>',		out='c/features.lua'},
+	{inc='<features.h>', out='c/features.lua'},
 	{inc='<bits/endian.h>',	out='c/bits/endian.lua'},
 	{inc='<bits/types/locale_t.h>',	out='c/bits/types/locale_t.lua'},
 	{inc='<bits/types/__sigset_t.h>',	out='c/bits/types/__sigset_t.lua'},
@@ -101,7 +101,7 @@ return {
 
 	-- depends: features.h bits/types.h
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
-	{inc='<sys/termios.h>',		out='c/sys/termios.lua'},
+	{inc='<sys/termios.h>', out='c/sys/termios.lua'},
 
 	-- depends: bits/types.h etc
 	{inc='<sys/stat.h>', out='c/sys/stat.lua', final=function(code)
@@ -122,13 +122,15 @@ return {
 		return code
 	end},
 
-	-- depends: bits/libc-header-start.h
+	{inc='<linux/limits.h>', out='c/linux/limits.lua'},
+
+	-- depends: bits/libc-header-start.h linux/limits.h
 	-- with this the preproc gets a warning:
 	--  warning: redefining LLONG_MIN from -1 to -9.2233720368548e+18 (originally (-LLONG_MAX - 1LL))
 	-- and that comes with a giant can of worms of how i'm handling cdef numbers vs macro defs vs lua numbers ...
 	-- mind you I could just make the warning: output into a comment
 	--  and there would be no need for manual manipulation here
-	{inc='<limits.h>',		out='c/limits.lua', final=function(code)
+	{inc='<limits.h>', out='c/limits.lua', final=function(code)
 		-- warning for redefining LLONG or something
 		code = removeWarnings(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
@@ -145,10 +147,10 @@ return {
 	end},
 	
 	-- depends: features.h, bits/types/__sigset_t.h
-	{inc='<setjmp.h>',		out='c/setjmp.lua'},
+	{inc='<setjmp.h>', out='c/setjmp.lua'},
 
 	-- depends on features.h
-	{inc='<errno.h>',		out='c/errno.lua', final=function(code)
+	{inc='<errno.h>', out='c/errno.lua', final=function(code)
 		-- manually add the 'errno' macro at the end:
 		code = code .. [[
 return setmetatable({
@@ -163,7 +165,7 @@ return setmetatable({
 	end},
 
 	-- depends: features.h bits/types.h
-	{inc='<unistd.h>',		out='c/unistd.lua', final=function(code)
+	{inc='<unistd.h>', out='c/unistd.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
@@ -203,7 +205,7 @@ end
 	end},
 
 	-- depends: stddef.h bits/types/time_t.h bits/types/struct_timespec.h
-	{inc='<sched.h>',		out='c/sched.lua', final=function(code)
+	{inc='<sched.h>', out='c/sched.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'pid_t')
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
@@ -226,7 +228,7 @@ end
 
 	-- depends: features.h stddef.h bits/types.h and too many really
 	-- this and any other file that requires stddef might have these lines which will have to be removed:
-	{inc='<time.h>',		out='c/time.lua', final=function(code)
+	{inc='<time.h>', out='c/time.lua', final=function(code)
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
 		code = replace_bits_types_builtin(code, 'pid_t')
@@ -234,7 +236,7 @@ end
 	end},
 
 	-- depends on too much
-	{inc='<stdarg.h>',		out='c/stdarg.lua', final=function(code)
+	{inc='<stdarg.h>', out='c/stdarg.lua', final=function(code)
 		-- stdio.h and stdarg.h both define this
 		-- typedef __gnuc_va_list va_list;
 		-- enum { _VA_LIST_DEFINED = 1 };
@@ -294,6 +296,8 @@ end
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually extracted from c/setjmp.lua
 	{dontGen=true, inc='<bits/setjmp.h>', out='c/bits/setjmp.lua'},
+	
+	{dontGen=true, inc='<bits/dirent.h>', out='c/bits/dirent.lua'},
 
 	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here
 	-- but i guess it doesn't even have to be here.
@@ -581,17 +585,17 @@ return lua
 		end,
 	},
 
-
+	-- depends on limits.h
+	-- has enum/define macro mixed errors
+	{inc='<dirent.h>', out='c/dirent.lua'},--, addDefinesAsEnumsLast=true},
 
 --[=[
 -- these all have some inlined enum errors:
 --  caused from #define spitting out an enum intermingled in the lines of an enum { already present 
 
-	-- depends on limits.h
-	{inc='<dirent.h>',		out='c/dirent.lua'},
 	
 	-- depends: sched.h time.h
-	{inc='<pthread.h>',		out='c/pthread.lua'},
+	{inc='<pthread.h>', out='c/pthread.lua'},
 
 	{inc='<sys/param.h>', out='c/sys/param.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
@@ -611,13 +615,13 @@ return lua
 		return code
 	end}
 
-	{inc='<sys/time.h>',		out='c/sys/time.lua', final=function(code)
+	{inc='<sys/time.h>', out='c/sys/time.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'suseconds_t')
 		return code
 	end},
 
 	-- uses a vararg macro which I don't support yet
-	{inc='<sys/sysinfo.h>',		out='c/sys/sysinfo.lua'},
+	{inc='<sys/sysinfo.h>', out='c/sys/sysinfo.lua'},
 --]=]
 
 	-- depends on bits/libc-header-start

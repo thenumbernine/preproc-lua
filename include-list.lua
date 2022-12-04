@@ -62,7 +62,9 @@ return {
 	{inc='<bits/endian.h>',	out='c/bits/endian.lua'},
 	{inc='<bits/types/locale_t.h>',	out='c/bits/types/locale_t.lua'},
 	{inc='<bits/types/__sigset_t.h>',	out='c/bits/types/__sigset_t.lua'},
-	
+
+	{inc='<bits/wchar.h>', out='c/bits/wchar.lua'},
+
 	-- depends: features.h
 	{inc='<bits/floatn.h>',	out='c/bits/floatn.lua'},
 	{inc='<bits/types.h>', out='c/bits/types.lua', final=function(code)
@@ -442,17 +444,17 @@ return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
 	end},
 
 	{
-		flags='-I../../cpp/ImGuiCommon/include -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
+		flags = '-I../../cpp/ImGuiCommon/include -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
 		-- cimgui has these 3 files together:
 		-- OpenGL i had to separate them
 		-- and OpenGL i put them in OS-specific place
-		inc='"cimgui.h"',
-		moreincs={
+		inc = '"cimgui.h"',
+		moreincs = {
 			'"imgui_impl_sdl.h"',
 			'"imgui_impl_opengl2.h"',
 		},
-		skipincs={'"imgui.h"'},	-- full of C++ so don't include it
-		out='cimgui.lua',
+		skipincs = {'"imgui.h"'},	-- full of C++ so don't include it
+		out = 'cimgui.lua',
 		final = function(code)
 			-- this is already in SDL 
 			code = code:gsub(
@@ -507,10 +509,10 @@ return ffi.load(lib)
 	-- also per-OS
 	-- depends: stddef.h stdint.h inttypes.h stdio.h stdarg.h
 	{
-		inc='<tiffio.h>',
-		out='Linux/tiff.lua',
-		flags=string.trim(io.readproc'pkg-config --cflags libtiff-4'),
-		final=function(code)
+		inc = '<tiffio.h>',
+		out = 'Linux/tiff.lua',
+		flags = string.trim(io.readproc'pkg-config --cflags libtiff-4'),
+		final = function(code)
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')
 			code = remove_need_macro(code, '__va_list')
@@ -536,11 +538,11 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc='<GL/gl.h>',
-		moreincs={'<GL/glext.h>'},
-		flags='-DGL_GLEXT_PROTOTYPES',
-		out='Linux/OpenGL.lua',
-		final=function(code)
+		inc = '<GL/gl.h>',
+		moreincs = {'<GL/glext.h>'},
+		flags = '-DGL_GLEXT_PROTOTYPES',
+		out = 'Linux/OpenGL.lua',
+		final = function(code)
 			code = code .. [[
 return ffi.load'GL'
 ]]
@@ -585,28 +587,6 @@ return ffi.load'GL'
 	-- uses a vararg macro which I don't support yet
 	{inc='<sys/sysinfo.h>',		out='c/sys/sysinfo.lua'},
 
-	-- "libpng requires a signed 16-bit type"
-	{inc='<png.h>', out='png.lua', final=function(code)
-		-- warning for redefining LLONG_MIN or something
-		code = removeWarnings(code)
-		code = [[
--- png 1.6.37 + zlib 1.2.8
-]] .. code .. [[
-local png
-if ffi.os == 'OSX' then
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')
-elseif ffi.os == 'Windows' then
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
-elseif ffi.os == 'Linux' then
-	png = ffi.load'png'
-else
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
-end
-return png
-]]
-		return code
-	end},
-
 -- these have _Complex errors
 
 	-- depends on bits/libc-header-start
@@ -644,14 +624,40 @@ return png
 
 --]=]
 
+	-- "libpng requires a signed 16-bit type"
+	{inc='<png.h>', out='png.lua', final=function(code)
+		-- warning for redefining LLONG_MIN or something
+		code = removeWarnings(code)
+		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
+
+		code = [[
+-- png 1.6.37 + zlib 1.2.8
+]] .. code .. [[
+local png
+if ffi.os == 'OSX' then
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')
+elseif ffi.os == 'Windows' then
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
+elseif ffi.os == 'Linux' then
+	png = ffi.load'png'
+else
+	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
+end
+return png
+]]
+		return code
+	end},
+
+
+
 	-- not working ..
 	-- "numeric float type not defined"
 	{
-		inc='<lua.h>',
-		moreincs={'<lualib.h>', '<lauxlib.h>'},
-		out='lua.lua',
-		flags=string.trim(io.readproc'pkg-config --cflags lua'),
-		final=function(code)
+		inc = '<lua.h>',
+		moreincs = {'<lualib.h>', '<lauxlib.h>'},
+		out = 'lua.lua',
+		flags = string.trim(io.readproc'pkg-config --cflags lua'),
+		final = function(code)
 			code = removeWarnings(code)	-- LLONG_MIN
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')
@@ -676,12 +682,19 @@ return lua
 		end,
 	},
 
-
---[[
+	-- TODO STILL
 	-- looks like atm i'm using a hand-rolled sdl anyways
 	{inc='<SDL2/SDL.h>', out='sdl.lua', flags=string.trim(io.readproc'pkg-config --cflags sdl2'), final=function(code)
-		--code = removeWarnings(code)
+		-- warning: redefining __MATH_DECLARING_DOUBLE from 1 to 0 (originally 0)
+		-- warning: redefining __MATH_DECLARING_FLOATN from 0 to 1 (originally 1)
+		code = removeWarnings(code)
+		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		-- TODO SDL includes wchar.h which defines WCHAR_MIN and WCHAR_MAX
+		--  	and it includes bits/wchar.h which define __WCHAR_MIN and max
+		-- but stdint includes only bits/wchar.h to define __WCHAR_MIN
+		--	but stdint doesnt include wchar.h ... so WCHAR_MIN isnt defined
+		-- but stdint does define WCHAR_MIN and max on its own ... why ... why doesn't it just include wchar.h?
+		-- so hmm...
 		return code
 	end},
---]]
 }

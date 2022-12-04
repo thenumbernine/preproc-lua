@@ -523,48 +523,54 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 							end
 						end
 					else
-						-- handle macro without args
-						local j,k = l:find(key)
-						if j and not isInString(l, j, k, checkingIncludeString)  then
-							-- make sure the symbol before and after is not a name character
-							local before = l:sub(j-1,j-1)
-							-- technically no need to match 'after' since the greedy match would have included it, right?
-							-- same for 'before' ?
-							local after = l:sub(k+1,k+1)
-							if not before:match'[_a-zA-Z0-9]'
-							and not after:match'[_a-zA-Z0-9]'
-							then
---print('found macro', key)
-								if alreadyReplaced[key]
-								and overlaps(alreadyReplaced[key], {j,k})
+						local j,k
+						k = 0
+						while true do
+							j = k+1
+							-- handle macro without args
+							j,k = l:find(key,j)
+							if not j then break end
+							if not isInString(l, j, k, checkingIncludeString)  then
+								-- make sure the symbol before and after is not a name character
+								local before = l:sub(j-1,j-1)
+								-- technically no need to match 'after' since the greedy match would have included it, right?
+								-- same for 'before' ?
+								local after = l:sub(k+1,k+1)
+								if not before:match'[_a-zA-Z0-9]'
+								and not after:match'[_a-zA-Z0-9]'
 								then
+--print('found macro', key)
+									if alreadyReplaced[key]
+									and overlaps(alreadyReplaced[key], {j,k})
+									then
 --print('...but its in a previously-recursively-expanded location')
-									-- don't expand
-								else						
+										-- don't expand
+									else
 --print('replacing with', v)
-									-- if the macro has params then expect a parenthesis after k
-									-- and replace all the instances of v's params in v'def with the values in those parenthesis
+										-- if the macro has params then expect a parenthesis after k
+										-- and replace all the instances of v's params in v'def with the values in those parenthesis
 
-									-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
+										-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
 --local origl = l
-									l = l:sub(1,j-1) .. v .. l:sub(k+1)
+										l = l:sub(1,j-1) .. v .. l:sub(k+1)
 --print('from', origl, 'to', l)
-									-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-									if l ~= origl then
-										found = true
+										-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
+										if l ~= origl then
+											found = true
+										end
+										-- but this won't stop if you have #define x A.x ... in which case you could still get stuck in a loop
+										-- instead I gotta make it so it just doesn't expand a second time
+										-- TODO do this for parameter-based macros also? #define x(y) A.x(y+1) ?
+										--
+										-- ok this is causing trouble with expressions, because it's preventing multiple expressions of the same macro from being expanded.
+										-- which makes me suspicious maybe I have to evaluate expressions macro-at-a-time?  but that means buliding a giant macro-dependency graph?
+										-- so I really only want to do this in self-referencing macros
+										--
+										-- so really we want to only not twice replace in the string region that the first macro expanded ....
+										-- ... smh
+										alreadyReplaced[key] = {j, j+#v-1}
+										break
 									end
-									-- but this won't stop if you have #define x A.x ... in which case you could still get stuck in a loop
-									-- instead I gotta make it so it just doesn't expand a second time
-									-- TODO do this for parameter-based macros also? #define x(y) A.x(y+1) ?
-									--
-									-- ok this is causing trouble with expressions, because it's preventing multiple expressions of the same macro from being expanded.
-									-- which makes me suspicious maybe I have to evaluate expressions macro-at-a-time?  but that means buliding a giant macro-dependency graph? 
-									-- so I really only want to do this in self-referencing macros
-									--
-									-- so really we want to only not twice replace in the string region that the first macro expanded .... 
-									-- ... smh
-									alreadyReplaced[key] = {j, j+#v-1}
-									break
 								end
 							end
 						end

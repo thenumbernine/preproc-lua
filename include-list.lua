@@ -56,6 +56,31 @@ local function commentOutLine(code, line)
 	return code
 end
 
+-- these all have some inlined enum errors:
+--  caused from #define spitting out an enum intermingled in the lines of an enum { already present 
+local function fixEnumsAndDefineMacrosInterleaved(code)
+	local lines = string.split(code, '\n')
+	lines = lines:mapi(function(l)
+		local a,b = l:match'^(.*) enum { (.*) = 0 };$'
+		if a then
+			-- there will be a trailing comma in all but the last of an enum
+			-- there may or may not be an "= value" in 'a' also
+			local comma = ''
+			if a:sub(-1) == ',' then
+				comma = ','
+				a = a:sub(1,-2)
+			end
+			-- TODO this might match even if a and b are different, even if b is a suffix of a
+			-- but honestly why even constraint a and b to be equal, since
+			-- at this point there's two enums on the same line, which i'm trying to avoid
+			if a:match(string.patescape(b)) then
+				return a..comma..'/* enum { '..b..' = 0 }; */'
+			end
+		end
+		return l
+	end)
+	return lines:concat'\n'
+end
 
 return {
 	{inc='<stddef.h>', out='c/stddef.lua'},
@@ -122,7 +147,10 @@ return {
 		return code
 	end},
 
-	{inc='<linux/limits.h>', out='c/linux/limits.lua'},
+	{inc='<linux/limits.h>', out='c/linux/limits.lua', final=function(code)
+		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+		return code
+	end},
 
 	-- depends: bits/libc-header-start.h linux/limits.h
 	-- with this the preproc gets a warning:
@@ -297,7 +325,10 @@ end
 	-- it must be manually extracted from c/setjmp.lua
 	{dontGen=true, inc='<bits/setjmp.h>', out='c/bits/setjmp.lua'},
 	
-	{dontGen=true, inc='<bits/dirent.h>', out='c/bits/dirent.lua'},
+	{dontGen=true, inc='<bits/dirent.h>', out='c/bits/dirent.lua', final=function(code)
+		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+		return code
+	end},
 
 	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here
 	-- but i guess it doesn't even have to be here.
@@ -584,22 +615,30 @@ return lua
 			return code
 		end,
 	},
-
+	
 	-- depends on limits.h
-	-- has enum/define macro mixed errors
-	{inc='<dirent.h>', out='c/dirent.lua'},--, addDefinesAsEnumsLast=true},
-
---[=[
--- these all have some inlined enum errors:
---  caused from #define spitting out an enum intermingled in the lines of an enum { already present 
-
+	-- idk why it says "attempt to redefine 'dirent' at line 2"  for load(file(...):read()) but not for require()
+	{
+		inc = '<dirent.h>',
+		out = 'c/dirent.lua',
+		final = function(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+		end,
+	},
 	
 	-- depends: sched.h time.h
-	{inc='<pthread.h>', out='c/pthread.lua'},
+	{inc='<pthread.h>', out='c/pthread.lua', final=function(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+	end},
 
 	{inc='<sys/param.h>', out='c/sys/param.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
+		code = fixEnumsAndDefineMacrosInterleaved(code)
+		-- i think all these stem from #define A B when the value is a string and not numeric
+		--  but my #define to enum inserter forces something to be produced
 		code = commentOutLine(code, 'enum { SIGIO = 0 };')
 		code = commentOutLine(code, 'enum { SIGCLD = 0 };')
 		code = commentOutLine(code, 'enum { SI_DETHREAD = 0 };')
@@ -611,18 +650,22 @@ return lua
 		code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
 		code = commentOutLine(code, 'enum { SI_USER = 0 };')
 		code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
+		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
 		code = remove_need_macro(code, 'NULL')
-		return code
-	end}
-
-	{inc='<sys/time.h>', out='c/sys/time.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'suseconds_t')
+		code = remove_need_macro(code, 'size_t')
 		return code
 	end},
 
+	{inc='<sys/time.h>', out='c/sys/time.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'suseconds_t')
+		code = fixEnumsAndDefineMacrosInterleaved(code)
+		return code
+	end},
+
+
+	-- TODO
 	-- uses a vararg macro which I don't support yet
-	{inc='<sys/sysinfo.h>', out='c/sys/sysinfo.lua'},
---]=]
+--	{inc='<sys/sysinfo.h>', out='c/sys/sysinfo.lua'},
 
 	-- depends on bits/libc-header-start
 	-- '<identifier>' expected near '_Complex' at line 2
@@ -716,17 +759,22 @@ return png
 
 	-- TODO STILL
 	-- looks like atm i'm using a hand-rolled sdl anyways
-	{inc='<SDL2/SDL.h>', out='sdl.lua', flags=string.trim(io.readproc'pkg-config --cflags sdl2'), final=function(code)
-		-- warning: redefining __MATH_DECLARING_DOUBLE from 1 to 0 (originally 0)
-		-- warning: redefining __MATH_DECLARING_FLOATN from 0 to 1 (originally 1)
-		code = removeWarnings(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		-- TODO SDL includes wchar.h which defines WCHAR_MIN and WCHAR_MAX
-		--  	and it includes bits/wchar.h which define __WCHAR_MIN and max
-		-- but stdint includes only bits/wchar.h to define __WCHAR_MIN
-		--	but stdint doesnt include wchar.h ... so WCHAR_MIN isnt defined
-		-- but stdint does define WCHAR_MIN and max on its own ... why ... why doesn't it just include wchar.h?
-		-- so hmm...
-		return code
-	end},
+	{
+		inc = '<SDL2/SDL.h>',
+		out = 'sdl.lua',
+		flags = string.trim(io.readproc'pkg-config --cflags sdl2'),
+		final = function(code)
+			-- warning: redefining __MATH_DECLARING_DOUBLE from 1 to 0 (originally 0)
+			-- warning: redefining __MATH_DECLARING_FLOATN from 0 to 1 (originally 1)
+			code = removeWarnings(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			-- TODO SDL includes wchar.h which defines WCHAR_MIN and WCHAR_MAX
+			--  	and it includes bits/wchar.h which define __WCHAR_MIN and max
+			-- but stdint includes only bits/wchar.h to define __WCHAR_MIN
+			--	but stdint doesnt include wchar.h ... so WCHAR_MIN isnt defined
+			-- but stdint does define WCHAR_MIN and max on its own ... why ... why doesn't it just include wchar.h?
+			-- so hmm...
+			return code
+		end,
+	},
 }

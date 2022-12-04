@@ -259,9 +259,6 @@ do
 		elseif f == "-skip" then
 			args:remove(i)
 			silentfiles:insert(args:remove(i))
-		elseif f == '-addDefinesAsEnumsLast' then
-			args:remove(i)
-			preproc.addDefinesAsEnumsLast = true
 		else
 			i = i + 1
 		end

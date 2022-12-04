@@ -3,6 +3,7 @@
 -- this is also used during generation for swapping out #includes with require()'s of already-generated files
 
 local string = require 'ext.string'
+local table = require 'ext.table'
 local io = require 'ext.io'
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
@@ -550,11 +551,42 @@ return ffi.load'GL'
 		end,
 	},
 
+	{
+		inc = '<lua.h>',
+		moreincs = {'<lualib.h>', '<lauxlib.h>'},
+		out = 'lua.lua',
+		flags = string.trim(io.readproc'pkg-config --cflags lua'),
+		final = function(code)
+			code = removeWarnings(code)	-- LLONG_MIN
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
+			code = [[
+-- lua 5.4
+]] .. code .. [[
+local lua
+if ffi.os == 'OSX' then
+	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/liblua.dylib')
+elseif ffi.os == 'Windows' then
+	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/liblua1.dll')
+elseif ffi.os == 'Linux' then
+	-- TODO pkg-config --libs lua ?
+	lua = ffi.load'lua'
+else
+	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/liblua.so')
+end
+return lua
+]]
+			return code
+		end,
+	},
+
 
 
 --[=[
 -- these all have some inlined enum errors:
-	
+--  caused from #define spitting out an enum intermingled in the lines of an enum { already present 
+
 	-- depends on limits.h
 	{inc='<dirent.h>',		out='c/dirent.lua'},
 	
@@ -586,8 +618,7 @@ return ffi.load'GL'
 
 	-- uses a vararg macro which I don't support yet
 	{inc='<sys/sysinfo.h>',		out='c/sys/sysinfo.lua'},
-
--- these have _Complex errors
+--]=]
 
 	-- depends on bits/libc-header-start
 	-- '<identifier>' expected near '_Complex' at line 2
@@ -596,6 +627,8 @@ return ffi.load'GL'
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = commentOutLine(code, 'enum { _Complex = 0 };')
 		code = commentOutLine(code, 'enum { complex = 0 };')
+		code = commentOutLine(code, 'enum { _Mdouble_ = 0 };')
+		
 		-- this uses define<=>typedef which always has some trouble
 		-- and this uses redefines which luajit ffi cant do so...
 		-- TODO from
@@ -608,23 +641,52 @@ return ffi.load'GL'
 		-- replace _Mdouble_complex_ with float _Complex
 		-- and from there until then end
 		-- replace _Mdouble_complex_  with long double _Complex
+		local a = code:find'_Mdouble_complex_ _Mdouble_ _Complex'
+		local b = code:find'define _Mdouble_%s*float'
+		local c = code:find'define _Mdouble_%s*long double'
+		local parts = table{
+			code:sub(1,a),
+			code:sub(a+1,b),
+			code:sub(b+1,c),
+			code:sub(c+1),
+		}
+		parts[2] = parts[2]:gsub('_Mdouble_complex_', 'double _Complex')
+		parts[3] = parts[3]:gsub('_Mdouble_complex_', 'float _Complex')
+		parts[4] = parts[4]:gsub('_Mdouble_complex_', 'long double _Complex')
+		code = parts:concat()
+
 		return code
 	end},
-
-
+	
 	-- depends on complex.h
 	{inc='<cblas.h>', out='cblas.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		code = [[
+-- OpenBLAS 0.3.20
+]] .. code .. [[
+local blas = ffi.load'openblas'
+return blas
+]]
 		return code
 	end},
 
-	-- depend on cblas, depends on complex
-	lapacke.sh
-	lapack.sh
+	{inc='<lapack.h>', out='lapack.lua', final=function(code)
+		code = code .. [[
+local lapack = ffi.load'lapack'
+return lapack
+]]
+		return code
+	end},
+	
+	{inc='<lapacke.h>', out='lapacke.lua', final=function(code)
+		code = code .. [[
+local lapacke = ffi.load'lapacke'
+return lapacke
+]]
+		return code
+	end},
 
---]=]
-
-	-- "libpng requires a signed 16-bit type"
+	-- produces an "int void" because macro arg-expansion covers already-expanded macro-args
 	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
@@ -647,40 +709,6 @@ return png
 ]]
 		return code
 	end},
-
-
-
-	-- not working ..
-	-- "numeric float type not defined"
-	{
-		inc = '<lua.h>',
-		moreincs = {'<lualib.h>', '<lauxlib.h>'},
-		out = 'lua.lua',
-		flags = string.trim(io.readproc'pkg-config --cflags lua'),
-		final = function(code)
-			code = removeWarnings(code)	-- LLONG_MIN
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
-			code = [[
--- lua 5.4
-]] .. code .. [[
-local lua
-if ffi.os == 'OSX' then
-	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/liblua.dylib')
-elseif ffi.os == 'Windows' then
-	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/liblua1.dll')
-elseif ffi.os == 'Linux' then
-	-- TODO pkg-config --libs lua ?
-	lua = ffi.load'lua'
-else
-	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/liblua.so')
-end
-return lua
-]]
-			return code
-		end,
-	},
 
 	-- TODO STILL
 	-- looks like atm i'm using a hand-rolled sdl anyways

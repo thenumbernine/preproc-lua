@@ -21,7 +21,11 @@ function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile
 		= self.mapFromIncludeToSearchFile
 		or {}
-	self.mapFromIncludeToSearchFile[fn] = sys and ('<'..search..'>') or ('"'..search..'"')
+	if sys then
+		self.mapFromIncludeToSearchFile[fn] = '<'..search..'>'
+	else
+		self.mapFromIncludeToSearchFile[fn] = '"'..search..'"'
+	end
 	return ThisPreproc.super.getIncludeFileCode(self, fn, search)
 end
 
@@ -45,7 +49,14 @@ function ThisPreproc:__call(...)
 					-- if beginfile is one of the manually-included files then don't replace it here.
 					if not incfiles:find(search) then
 						-- if it's found in includeList then ...
-						local _, inc = table.find(includeList, nil, function(o) return o.inc == search end)
+						local _, inc = table.find(includeList, nil, function(o) 
+							--  if search is a <> then we should look for "" as well
+							if search:sub(1,1) == '"' then
+								return o.inc:sub(2,-2) == search:sub(2,-2)
+							else
+								return o.inc == search 
+							end
+						end)
 						if inc then
 							currentfile = beginfile
 							currentluainc = inc.out:match'^(.*)%.lua$':gsub('/', '.')

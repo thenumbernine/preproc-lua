@@ -57,7 +57,7 @@ local function commentOutLine(code, line)
 end
 
 -- these all have some inlined enum errors:
---  caused from #define spitting out an enum intermingled in the lines of an enum { already present 
+--  caused from #define spitting out an enum intermingled in the lines of an enum { already present
 local function fixEnumsAndDefineMacrosInterleaved(code)
 	local lines = string.split(code, '\n')
 	lines = lines:mapi(function(l)
@@ -241,6 +241,9 @@ end
 	end},
 	
 	-- depends: bits/types.h
+	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(file'results/c/stdint.lua':read()))()" will give an error:
+	--  `attempt to redefine 'WCHAR_MIN' at line 75
+	-- because lua.ext already defined it
 	{inc='<stdint.h>',	out='c/stdint.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		return code
@@ -492,7 +495,7 @@ return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
 		skipincs = {'"imgui.h"'},	-- full of C++ so don't include it
 		out = 'cimgui.lua',
 		final = function(code)
-			-- this is already in SDL 
+			-- this is already in SDL
 			code = code:gsub(
 				string.patescape'struct SDL_Window;'..'\n'
 				..string.patescape'struct SDL_Renderer;'..'\n'
@@ -617,7 +620,7 @@ return lua
 	},
 	
 	-- depends on limits.h
-	-- idk why it says "attempt to redefine 'dirent' at line 2"  for load(file(...):read()) but not for require()
+	-- because lua.ext uses some ffi stuff, it says "attempt to redefine 'dirent' at line 2"  for my load(file(...):read()) but not for require'results....'
 	{
 		inc = '<dirent.h>',
 		out = 'c/dirent.lua',
@@ -737,8 +740,10 @@ return lapacke
 	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
+		
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
-
+		code = code:gsub('int void', 'int type');
+		
 		code = [[
 -- png 1.6.37 + zlib 1.2.8
 ]] .. code .. [[
@@ -774,6 +779,23 @@ return png
 			--	but stdint doesnt include wchar.h ... so WCHAR_MIN isnt defined
 			-- but stdint does define WCHAR_MIN and max on its own ... why ... why doesn't it just include wchar.h?
 			-- so hmm...
+			
+			code = code .. [[
+local libs = ffi_luajit_libs or {
+	OSX     = { x86 = "$LUAJIT_LIBPATH/bin/OSX/sdl.dylib", x64 = "$LUAJIT_LIBPATH/bin/OSX/sdl.dylib" },
+	Windows = { x86 = "$LUAJIT_LIBPATH/bin/Windows/x86/SDL2.dll", x64 = "$LUAJIT_LIBPATH/bin/Windows/x64/SDL2.dll" },
+	--Windows = { x86 = "$LUAJIT_LIBPATH/bin/Windows/x86/SDL.dll", x64 = "$LUAJIT_LIBPATH/bin/Windows/x64/SDL.dll" },
+	Linux   = { },
+	BSD     = { x86 = "bin/luajit32.so",  x64 = "bin/luajit64.so" },
+	POSIX   = { x86 = "bin/luajit32.so",  x64 = "bin/luajit64.so" },
+	Other   = { x86 = "bin/luajit32.so",  x64 = "bin/luajit64.so" },
+}
+local sdl  = ffi.load(
+	(libs[ ffi.os ][ ffi.arch ] or "SDL2")
+	:gsub('%$([_%w]+)', os.getenv)
+)
+return sdl
+]]
 			return code
 		end,
 	},

@@ -99,7 +99,9 @@ end
 
 function Preproc:getIncludeFileCode(fn, search, sys)
 	-- at position i, insert the file
-	return assert(file(fn):read(), "couldn't find file "..fn)
+	return assert(file(fn):read(), "couldn't find file "..(
+		sys and ('<'..fn..'>') or ('"'..fn..'"')
+	))
 end
 
 function Preproc:getDefineCode(k, v, l)

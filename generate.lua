@@ -4,6 +4,7 @@ local table = require 'ext.table'
 local string = require 'ext.string'
 local io = require 'ext.io'
 local class = require 'ext.class'
+local tolua = require 'ext.tolua'
 
 local Preproc = require 'preproc'
 local ThisPreproc = class(Preproc)
@@ -26,7 +27,7 @@ function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	else
 		self.mapFromIncludeToSearchFile[fn] = '"'..search..'"'
 	end
-	return ThisPreproc.super.getIncludeFileCode(self, fn, search)
+	return ThisPreproc.super.getIncludeFileCode(self, fn, search, sys)
 end
 
 -- 2) do a final pass replacing the BEGIN/END's of the found names
@@ -37,6 +38,7 @@ function ThisPreproc:__call(...)
 	local currentfile
 	local currentluainc
 	local newlines = table()
+--newlines:insert('/* incfiles: '..tolua(incfiles)..' */')
 	for i,l in ipairs(lines) do
 		-- skip the first BEGIN, cuz this is the BEGIN for the include we are currently generating.
 		-- dont wanna swap out the whole thing
@@ -45,19 +47,28 @@ function ThisPreproc:__call(...)
 			if beginfile then
 				local search = self.mapFromIncludeToSearchFile[beginfile]
 				if search then
-					--newlines:insert('/* search '..tostring(search)..' */')
+--newlines:insert('/* search: '..tostring(search)..' */')
+--newlines:insert('/* ... checking incfiles: '..tolua(incfiles)..' */')
 					-- if beginfile is one of the manually-included files then don't replace it here.
-					if not incfiles:find(search) then
+					if incfiles:find(nil, function(o)
+						-- TODO if one is user then dont search for the other in sys, idk which way tho
+						return search:sub(2,-2) == o:sub(2,-2)
+					end) then
+--newlines:insert('/* ... is already in the generate.lua args */')
+					else
 						-- if it's found in includeList then ...
-						local _, inc = table.find(includeList, nil, function(o) 
-							--  if search is a <> then we should look for "" as well
+						local _, inc = table.find(includeList, nil, function(o)
+							-- if we're including a system file then it could be <> or ""
 							if search:sub(1,1) == '"' then
 								return o.inc:sub(2,-2) == search:sub(2,-2)
 							else
-								return o.inc == search 
+								return o.inc == search
 							end
 						end)
-						if inc then
+						if not inc then
+--newlines:insert("/* didn't find */")
+						else
+--newlines:insert('/*  ... found: '..inc.inc..' */')
 							currentfile = beginfile
 							currentluainc = inc.out:match'^(.*)%.lua$':gsub('/', '.')
 						end
@@ -78,7 +89,7 @@ function ThisPreproc:__call(...)
 		end
 	end
 
-	-- [[ 
+	-- [[
 	-- split off all {'s into newlines?
 	lines = newlines
 	newlines = table()
@@ -207,9 +218,9 @@ else	-- assume everything else uses gcc
 	local sysSearchDirs = string.split(string.trim(sysSearchStr), '\n'):mapi(string.trim)
 	if verbose then
 		print('userSearchDirs')
-		print(require 'ext.tolua'(userSearchDirs))
+		print(tolua(userSearchDirs))
 		print('sysSearchDirs')
-		print(require 'ext.tolua'(sysSearchDirs))
+		print(tolua(sysSearchDirs))
 	end
 	preproc:addIncludeDirs(userSearchDirs, false)
 	preproc:addIncludeDirs(sysSearchDirs, true)
@@ -288,10 +299,10 @@ end):concat'\n'..'\n')
 
 print(code)
 
---print('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
+--print('macros: '..tolua(preproc.macros)..'\n')
 
 
---io.stderr:write('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
+--io.stderr:write('macros: '..tolua(preproc.macros)..'\n')
 
 
 -- see if there's any errors here
@@ -299,7 +310,7 @@ print(code)
 --local result = xpcall(function()
 --	ffi.cdef(code)
 --end, function(err)
---	io.stderr:write('macros: '..require 'ext.tolua'(preproc.macros)..'\n')
+--	io.stderr:write('macros: '..tolua(preproc.macros)..'\n')
 --	io.stderr:write(err..'\n'..debug.traceback())
 --end)
 --os.exit(result and 0 or 1)

@@ -712,7 +712,6 @@ return lua
 	{inc='<cblas.h>', out='cblas.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = [[
--- OpenBLAS 0.3.20
 ]] .. code .. [[
 local blas = ffi.load'openblas'
 return blas
@@ -736,6 +735,9 @@ return lapacke
 		return code
 	end},
 
+	-- libzip-dev
+	{inc='<zip.h>', out='zip.lua'},
+
 	-- produces an "int void" because macro arg-expansion covers already-expanded macro-args
 	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
@@ -744,9 +746,7 @@ return lapacke
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
 		code = code:gsub('int void', 'int type');
 		
-		code = [[
--- png 1.6.37 + zlib 1.2.8
-]] .. code .. [[
+		code = code .. [[
 local png
 if ffi.os == 'OSX' then
 	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')

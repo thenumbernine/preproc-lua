@@ -736,7 +736,13 @@ return lapacke
 	end},
 
 	-- libzip-dev
-	{inc='<zip.h>', out='zip.lua'},
+	{inc='<zip.h>', out='zip.lua', final=function(code)
+		code = code .. [[
+local zip = ffi.load'zip'
+return zip
+]]
+		return code
+	end},
 
 	-- produces an "int void" because macro arg-expansion covers already-expanded macro-args
 	{inc='<png.h>', out='png.lua', final=function(code)

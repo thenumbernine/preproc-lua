@@ -41,13 +41,13 @@ optional-args:
 This is the lua file for preprocessor class.
 
 process a single file:
-```
+``` Lua
 local Preproc = require 'preproc'
 print(Preproc(code))
 ```
 
 process a single file with some options:
-```
+``` Lua
 local Preproc = require 'preproc'
 print(Preproc{
 	code = code,
@@ -57,7 +57,7 @@ print(Preproc{
 ```
 
 process multiple files:
-```
+``` Lua
 local Preproc = require 'preproc'
 local preproc = Preproc()
 print(preproc{
@@ -74,7 +74,7 @@ print(preproc{
 ```
 
 or modify the state as we go:
-```
+``` Lua
 preproc:setMacros{
 	KEY1 = 'value1',
 	KEY2 = 'value2',

@@ -3,6 +3,7 @@ local ffi = require 'ffi'		-- used for OS check and used for verifying that the 
 local table = require 'ext.table'
 local string = require 'ext.string'
 local io = require 'ext.io'
+local os = require 'ext.os'
 local class = require 'ext.class'
 local tolua = require 'ext.tolua'
 
@@ -244,7 +245,7 @@ end
 
 -- where I keep my glext.h and khr/khrplatform.h
 -- TODO move this into gl.sh?
-preproc:addIncludeDir((os.getenv'USERPROFILE' or os.getenv'HOME')..'/include', ffi.os == 'Windows')
+preproc:addIncludeDir(os.home()..'/include', ffi.os == 'Windows')
 
 -- cwd? no, this just risks the generated file geeting included mid-generation.
 -- but for testing I enable it ... with -I.

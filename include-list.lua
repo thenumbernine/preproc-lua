@@ -726,7 +726,8 @@ return lapack
 ]]
 		return code
 	end},
-	
+
+	-- needs lapack_int replaced with int, except the enum def line
 	{inc='<lapacke.h>', out='lapacke.lua', final=function(code)
 		code = code .. [[
 local lapacke = ffi.load'lapacke'

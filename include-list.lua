@@ -737,6 +737,7 @@ return lapacke
 	end},
 
 	-- libzip-dev
+	-- TODO #define ZIP_OPSYS_* is hex values, should be enums, but they are being commented out ...
 	{inc='<zip.h>', out='zip.lua', final=function(code)
 		code = code .. [[
 local zip = ffi.load'zip'

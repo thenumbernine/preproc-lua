@@ -719,6 +719,11 @@ return blas
 		return code
 	end},
 
+	-- TODO preproc on this generate a *LOT* of `enum { LAPACK_lsame_base = 0 };`
+	-- they are generated from macro calls to LAPACK_GLOBAL
+	-- which is defined as
+	-- #define LAPACK_GLOBAL(lcname,UCNAME)  lcname##_
+	-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
 	{inc='<lapack.h>', out='lapack.lua', final=function(code)
 		code = code .. [[
 local lapack = ffi.load'lapack'

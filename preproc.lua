@@ -10,7 +10,10 @@ local function isvalidsymbol(s)
 	return not not s:match('^'..namepat..'$')
 end
 
-local function removeCommentsAndApplyContinuations(code)
+local Preproc = class()
+
+--static method
+function Preproc.removeCommentsAndApplyContinuations(code)
 	
 	-- should line continuations \ affect single-line comments?
 	-- if so then do this here
@@ -50,8 +53,6 @@ local function removeCommentsAndApplyContinuations(code)
 	return code
 end
 
-
-local Preproc = class()
 
 -- whether, as a final pass, we combine non-semicolon lines
 Preproc.joinNonSemicolonLines = true
@@ -1116,7 +1117,7 @@ function Preproc:__call(args)
 
 	self.includeStack = table()
 
-	code = removeCommentsAndApplyContinuations(code)
+	code = Preproc.removeCommentsAndApplyContinuations(code)
 	local lines = string.split(code, '\n')
 
 	if args.macros then
@@ -1336,7 +1337,7 @@ function Preproc:__call(args)
 								-- so this is a delicate mess.
 								local newcode = self:getIncludeFileCode(fn, search, sys)
 								
-								newcode = removeCommentsAndApplyContinuations(newcode)
+								newcode = Preproc.removeCommentsAndApplyContinuations(newcode)
 								local newlines = string.split(newcode, '\n')
 								
 								while #newlines > 0 do
@@ -1401,7 +1402,7 @@ function Preproc:__call(args)
 								-- at position i, insert the file
 								local newcode = assert(file(fn):read(), "couldn't find file "..fn)
 
-								newcode = removeCommentsAndApplyContinuations(newcode)
+								newcode = Preproc.removeCommentsAndApplyContinuations(newcode)
 								local newlines = string.split(newcode, '\n')
 								
 								while #newlines > 0 do

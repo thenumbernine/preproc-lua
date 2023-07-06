@@ -274,6 +274,15 @@ end
 		-- so maybe I should put it in its own manual file?
 		code = remove_VA_LIST_DEFINED(code)
 		code = replace_va_list_require(code)
+		-- for fopen overloading
+		code = code .. [[
+-- special case since in the browser app where I'm capturing fopen for remote requests and caching
+-- feel free to not use the returend table and just use ffi.C for faster access
+-- but know you'll be losing compatability with browser
+return setmetatable({}, {
+	__index = ffi.C,
+})
+]]
 		return code
 	end},
 

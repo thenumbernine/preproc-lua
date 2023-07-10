@@ -835,5 +835,6 @@ return sdl
 		out = 'vorbis/vorbisfile.lua',
 		flags = '-I/usr/include/vorbis',
 		-- TODO the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
+		-- TODO append "return ffi.load'vorbisfile'"
 	},
 }

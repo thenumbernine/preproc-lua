@@ -821,4 +821,19 @@ return sdl
 			return code
 		end,
 	},
+
+	{
+		inc = '<ogg/ogg.h>',
+		out = 'ogg/ogg.lua',
+	},
+	{
+		inc = '<vorbis/codec.h>',
+		out = 'vorbis/codec.lua',
+	},
+	{
+		inc = '<vorbis/vorbisfile.h>',
+		out = 'vorbis/vorbisfile.lua',
+		flags = '-I/usr/include/vorbis',
+		-- TODO the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
+	},
 }

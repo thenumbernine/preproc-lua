@@ -891,4 +891,17 @@ return setmetatable({
 			return code
 		end,
 	},
+
+	{
+		inc = '<GLES/gl.h>',
+		out = 'OpenGLES1.lua',
+	},
+	{
+		inc = '<GLES2/gl2.h>',
+		out = 'OpenGLES2.lua',
+	},
+	{
+		inc = '<GLES3/gl3.h>',
+		out = 'OpenGLES3.lua',
+	},
 }

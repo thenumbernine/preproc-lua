@@ -895,13 +895,28 @@ return setmetatable({
 	{
 		inc = '<GLES/gl.h>',
 		out = 'OpenGLES1.lua',
+		final = function(code)
+			return code .. [[
+return ffi.load'GLESv1_CM.so'
+]]
+		end,
 	},
 	{
 		inc = '<GLES2/gl2.h>',
 		out = 'OpenGLES2.lua',
+		final = function(code)
+			return code .. [[
+return ffi.load'GLESv2.so'
+]]
+		end,
 	},
 	{
 		inc = '<GLES3/gl3.h>',
 		out = 'OpenGLES3.lua',
+		final = function(code)
+			-- why don't I have a GLES3 library when I have GLES3 headers?
+			return code .. [[
+]]
+		end,
 	},
 }

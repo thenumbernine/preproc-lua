@@ -1,6 +1,6 @@
 #!/usr/bin/env lua
 
-local file = require 'ext.file'
+local path = require 'ext.path'
 local table = require 'ext.table'
 
 -- this holds the stuff thats working already
@@ -31,9 +31,9 @@ local outdir = 'results'
 for _,inc in ipairs(includeList) do
 	if not inc.dontGen then
 		local outpath = outdir..'/'..inc.out
-		local dir,outfn = file(outpath):getdir()
-		file(dir):mkdir(true)
-		file(outpath):write[=[
+		local dir,outfn = path(outpath):getdir()
+		path(dir):mkdir(true)
+		path(outpath):write[=[
 local ffi = require 'ffi'
 ffi.cdef[[
 ]=]
@@ -74,14 +74,14 @@ ffi.cdef[[
 		}
 		cmd = cmd:concat' '
 		print(exec(cmd))
-		file(outpath):append[=[
+		path(outpath):append[=[
 ]]
 ]=]
 		-- if there's a final-pass on the code then do it
 		if inc.final then
-			assert(file(outpath):write(
+			assert(path(outpath):write(
 				assert(inc.final(
-					assert(file(outpath):read())
+					assert(path(outpath):read())
 				), "expected final() to return a string")
 			))
 		end

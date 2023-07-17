@@ -241,7 +241,7 @@ end
 	end},
 	
 	-- depends: bits/types.h
-	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(file'results/c/stdint.lua':read()))()" will give an error:
+	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(path'results/c/stdint.lua':read()))()" will give an error:
 	--  `attempt to redefine 'WCHAR_MIN' at line 75
 	-- because lua.ext already defined it
 	{inc='<stdint.h>',	out='c/stdint.lua', final=function(code)
@@ -629,7 +629,7 @@ return lua
 	},
 	
 	-- depends on limits.h
-	-- because lua.ext uses some ffi stuff, it says "attempt to redefine 'dirent' at line 2"  for my load(file(...):read()) but not for require'results....'
+	-- because lua.ext uses some ffi stuff, it says "attempt to redefine 'dirent' at line 2"  for my load(path(...):read()) but not for require'results....'
 	{
 		inc = '<dirent.h>',
 		out = 'c/dirent.lua',

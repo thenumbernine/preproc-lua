@@ -579,6 +579,12 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 		return code
 	end},
 
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '<KHR/khrplatform.h>',
+		out = 'KHR/khrplatform.lua',
+	},
+
 	-- inc is put last before flags
 	-- but inc is what the make_all.lua uses
 	-- so this has to be built make_all.lua GL/glext.h

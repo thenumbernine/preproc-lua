@@ -893,11 +893,20 @@ return setmetatable({
 	},
 
 	{
+		inc = '<EGL/egl.h>',
+		out = 'EGL.lua',
+		final = function(code)
+			return code .. [[
+return ffi.load'EGL'
+]]
+		end,
+	},
+	{
 		inc = '<GLES/gl.h>',
 		out = 'OpenGLES1.lua',
 		final = function(code)
 			return code .. [[
-return ffi.load'GLESv1_CM.so'
+return ffi.load'GLESv1_CM'
 ]]
 		end,
 	},
@@ -906,7 +915,7 @@ return ffi.load'GLESv1_CM.so'
 		out = 'OpenGLES2.lua',
 		final = function(code)
 			return code .. [[
-return ffi.load'GLESv2.so'
+return ffi.load'GLESv2'
 ]]
 		end,
 	},

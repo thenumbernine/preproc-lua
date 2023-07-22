@@ -942,6 +942,7 @@ return ffi.load'GLESv2'
 		final = function(code)
 			-- why don't I have a GLES3 library when I have GLES3 headers?
 			return code .. [[
+return ffi.load'GLESv2'
 ]]
 		end,
 	},

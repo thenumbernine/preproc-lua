@@ -524,14 +524,18 @@ return ffi.load'cimgui_sdl'
 		end,
 	},
 
-	{inc='<CL/cl.h>', moreincs={'<CL/cl_gl.h>'}, out='OpenCL.lua', final=function(code)
-		code = commentOutLine(code, 'warning: Need to implement some method to align data here')
-		
-		-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
-		-- so fix it here:
-		code = code:gsub(string.patescape"]] require 'ffi.OpenCL' ffi.cdef[[\n", "")
-		
-		code = code .. [[
+	{
+		inc='<CL/cl.h>',
+		moreincs={'<CL/cl_gl.h>'},
+		out='OpenCL.lua',
+		final=function(code)
+			code = commentOutLine(code, 'warning: Need to implement some method to align data here')
+			
+			-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
+			-- so fix it here:
+			code = code:gsub(string.patescape"]] require 'ffi.OpenCL' ffi.cdef[[\n", "")
+			
+			code = code .. [[
 local libs = ffi_OpenCL_libs or {
 	OSX = {x86 = 'OpenCL.framework/OpenCL', x64 = 'OpenCL.framework/OpenCL'},
 	Windows = {x86 = 'opencl.dll', x64 = 'opencl.dll'},
@@ -546,8 +550,9 @@ local libs = ffi_OpenCL_libs or {
 local lib = ffi_OpenCL_lib or libs[ffi.os][ffi.arch]
 return ffi.load(lib)
 ]]
-		return code
-	end},
+			return code
+		end,
+	},
 
 -- these external files are per-OS
 -- maybe eventually all .h's will be?
@@ -943,6 +948,24 @@ return ffi.load'GLESv2'
 			-- why don't I have a GLES3 library when I have GLES3 headers?
 			return code .. [[
 return ffi.load'GLESv2'
+]]
+		end,
+	},
+	{
+		inc = '<AL/al.h>',
+		moreincs = {
+			'<AL/alc.h>',
+		},
+		out = 'OpenAL.lua',
+		final = function(code)
+			return code .. [[
+if ffi.os == 'OSX' then
+	return ffi.load'OpenAL.framework/OpenAL'
+elseif ffi.os == 'Windows' then
+	return ffi.load'openal32'
+else
+	return ffi.load'openal'
+end
 ]]
 		end,
 	},

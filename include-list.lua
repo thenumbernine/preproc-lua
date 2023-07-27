@@ -927,5 +927,8 @@ return require 'ffi.load' 'GLESv2'
 return require 'ffi.load' 'openal'
 ]]
 		end,
+		ffiload = {
+			openal = {Windows = 'OpenAL32'},
+		},
 	},
 }

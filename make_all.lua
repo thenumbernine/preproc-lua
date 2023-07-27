@@ -59,11 +59,13 @@ ffi.cdef[[
 				addincarg(f)
 			end
 		end
-		if inc.skipincs then
-			for _,f in ipairs(inc.skipincs) do
-				cmd:insert'-skip'
-				addincarg(f)
-			end
+		for _,f in ipairs(inc.silentincs or {}) do
+			cmd:insert'-silent'
+			addincarg(f)
+		end
+		for _,f in ipairs(inc.skipincs or {}) do
+			cmd:insert'-skip'
+			addincarg(f)
 		end
 		if inc.addDefinesAsEnumsLast then
 			cmd:insert'-addDefinesAsEnumsLast'

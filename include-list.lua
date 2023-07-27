@@ -499,7 +499,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 			'"imgui_impl_sdl2.h"',
 			'"imgui_impl_opengl3.h"',
 		},
-		skipincs = {'"imgui.h"'},	-- full of C++ so don't include it
+		silentincs = {'"imgui.h"'},	-- full of C++ so don't include it
 		flags = '-I/usr/local/include/imgui-1.89.7dock -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
 		out = 'cimgui.lua',
 		final = function(code)

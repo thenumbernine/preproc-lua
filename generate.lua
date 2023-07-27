@@ -145,7 +145,7 @@ local preproc = ThisPreproc()
 --[[
 args:
 	-I<incdir> = add include dir
-	-skip <inc> = include it, add it to the state, but don't add it to the output
+	-silent <inc> = include it, add it to the state, but don't add it to the output
 		useful for system files that you don't want mixed in there
 --]]
 local args = table{...}
@@ -157,44 +157,62 @@ for i=#args,1,-1 do	-- TOOD handle *all* args here and just use later what you r
 	end
 end
 
+-- include but don't output these
+local silentfiles = table()
+-- don't even include these
+local skipfiles = table()
+
 if ffi.os == 'Windows' then
 	-- I guess pick these to match the compiler used to build luajit
-	-- TODO this could work if my macro evaluator could handle undef'd comparisons <=> replace with zero
-	preproc:setMacros{
-		-- don't define this or khrplatform explodes with stdint.h stuff
-		--__STDC_VERSION__ = '201710L',	-- c++17
-		--__STDCPP_THREADS__ = '0',
-		
-		_MSC_VER = '1929',
-		_MSC_FULL_VER = '192930038',
-		_MSVC_LANG = '201402',
-		_MSC_BUILD = '1',
+	preproc[[
+//#define __STDC_VERSION__	201710L	// c++17
+//#define __STDCPP_THREADS__	0
+#define _MSC_VER	1929
+#define _MSC_FULL_VER	192930038
+#define _MSVC_LANG	201402
+#define _MSC_BUILD	1
 
-	-- choose which apply:
-		_M_AMD64 = '100',
-		--_M_ARM = '7',
-		--_M_ARM_ARMV7VE = '1',
-		--_M_ARM64 = '1',
-		--_M_IX86 = '600',
-		_M_X64 = '100',
+// choose which apply:
+#define _M_AMD64	100
+//#define _M_ARM	7
+//#define _M_ARM_ARMV7VE	1
+//#define _M_ARM64	1
+//#define _M_IX86	600
+#define _M_X64	100
 
-		_WIN32 = '1',
-		_WIN64 = '1',
-	}
+#define _WIN32	1
+#define _WIN64	1
 
-	--[[ does this just setup the preproc state?
-	-- or is there typedef stuff in here too?
-	-- if so then feed it to ffi
-	-- it gets into varargs and stringizing ...
-	preproc'#include <windows.h>'
-	--]]
-	-- [[
-	preproc:setMacros{
-		-- these are used in gl.h, but where are they defined? probably windows.h
-		WINGDIAPI = '',
-		APIENTRY = '',
-	}
-	--]]
+// <vcruntime.h> has these: (I'm skipping it for now)
+#define _CRT_BEGIN_C_HEADER
+#define _CRT_END_C_HEADER
+
+// <sal.h> has these:  (included by <vcruntime.h>)
+#define _In_
+#define _In_opt_z_
+#define _Out_
+#define _Outptr_
+#define _Outref_
+#define _Inout_
+#define _Ret_
+#define _Field_range_(min,max)
+]]
+
+	skipfiles:insert'<vcruntime.h>'
+
+	-- how to know where these are?
+	preproc:addIncludeDirs({
+		-- what's in my VS 2022 Project -> VC++ Directories -> General -> Include Directories
+		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\include]],
+		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\atlmfc\include]],
+		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\VS\include]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\ucrt]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\um]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\shared]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\winrt]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\cppwinrt]],
+		[[C:\Program Files (x86)\Windows Kits\NETFXSDK\4.6.1\Include\um]],
+	}, true)
 else	-- assume everything else uses gcc
 	assert(os.execute'gcc --version > /dev/null 2>&1', "failed to find gcc")	-- make sure we have gcc
 	preproc(io.readproc'gcc -dM -E - < /dev/null 2>&1')
@@ -251,7 +269,6 @@ preproc:addIncludeDir(os.home()..'/include', ffi.os == 'Windows')
 -- but for testing I enable it ... with -I.
 --preproc:addIncludeDir('.', false)
 
-local silentfiles = table()
 do
 	local i = 1
 	while i <= #args do
@@ -268,9 +285,12 @@ do
 			end
 			preproc:setMacros{[k]=v}
 			args:remove(i)
-		elseif f == "-skip" then
+		elseif f == "-silent" then
 			args:remove(i)
 			silentfiles:insert(args:remove(i))
+		elseif f == "-skip" then
+			args:remove(i)
+			skipfiles:insert(args:remove(i))
 		else
 			i = i + 1
 		end
@@ -278,19 +298,27 @@ do
 end
 incfiles = args	-- whatever is left is include files
 
---[[
-windows' gl/gl.h defines the following:
-#define GL_EXT_vertex_array               1
-#define GL_EXT_bgra                       1
-#define GL_EXT_paletted_texture           1
-#define GL_WIN_swap_hint                  1
-#define GL_WIN_draw_range_elements        1
-// #define GL_WIN_phong_shading              1
-// #define GL_WIN_specular_fog               1
+for _,rest in ipairs(skipfiles) do
+	-- TODO this code is also in preproc.lua in #include filename resolution ...
+	local sys = true
+	local fn = rest:match'^<(.*)>$'
+	if not fn then
+		sys = false
+		fn = rest:match'^"(.*)"$'
+	end
+	if not fn then
+		error("skip couldn't find include file: "..rest)
+	end
+	local search = fn
+	fn = preproc:searchForInclude(fn, sys)
+	if not fn then
+		error("skip: couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
+	end
 
-probably because their functions/macros are in the gl.h header
-BUT windows DOESNT define the true EXT-suffix functions
---]]
+io.stderr:write('skipping ', fn,'\n')
+	-- treat it like we do #pragma once files
+	preproc.alreadyIncludedFiles[fn] = true
+end
 for _,fn in ipairs(silentfiles) do
 	preproc("#include "..fn)
 end
@@ -307,7 +335,7 @@ print(code)
 
 
 -- see if there's any errors here
--- TODO There will almost always be errors if you used -skip, so how about in that case automatically include the luajit of the skipped files?
+-- TODO There will almost always be errors if you used -silent, so how about in that case automatically include the luajit of the skipped files?
 --local result = xpcall(function()
 --	ffi.cdef(code)
 --end, function(err)

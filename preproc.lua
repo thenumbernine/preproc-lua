@@ -14,7 +14,11 @@ local Preproc = class()
 
 --static method
 function Preproc.removeCommentsAndApplyContinuations(code)
-	
+
+	-- dos -> unix file format ... always?
+	-- what about just \r's?
+	code = code:gsub('\r\n', '\n')
+
 	-- should line continuations \ affect single-line comments?
 	-- if so then do this here
 	-- or should they not?  then do this after.
@@ -1149,12 +1153,12 @@ function Preproc:__call(args)
 						end
 					end
 				end
-	--print('eval is', eval, 'line is', l)
+--print('eval is', eval, 'line is', l)
 
 				l = string.trim(l)	-- trailing space doesn't matter, right?
 				if l:sub(1,1) == '#' then
 					local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
-	--print('cmd is', cmd, 'rest is', rest)
+--print('cmd is', cmd, 'rest is', rest)
 					
 					local function closeIf()
 						assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
@@ -1166,7 +1170,7 @@ function Preproc:__call(args)
 							local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
-	--print('defining with params',k,params,paramdef)
+--print('defining with params',k,params,paramdef)
 								
 	-- [[ what if we're defining a macro with args?
 	-- at this point I probably need to use a parser on #if evaluations
@@ -1188,7 +1192,7 @@ function Preproc:__call(args)
 								local k, v = rest:match'^(%S+)%s+(.-)$'
 								if k then
 									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
-	--print('defining value',k,v)
+--print('defining value',k,v)
 									-- [[ evaluate macros of v?
 									-- and skip previous lines
 									self.foundIncompleteMacroWarningMessage = nil
@@ -1228,8 +1232,15 @@ function Preproc:__call(args)
 						then
 							cond = false
 						else
-							cond = self:parseCondExpr(rest)
-							assert(cond ~= nil, "cond must be true or false")
+							-- only parse the condition if we're evaluating this #if block
+							-- otherwise the cond could have macros that aren't defined yet
+							-- if we just give the cond a false value it won't matter -- the whole block is being skipped anyways
+							if not eval then
+								cond = false
+							else
+								cond = self:parseCondExpr(rest)
+								assert(cond ~= nil, "cond must be true or false")
+							end
 						end
 	--print('got cond', cond, 'from', rest)
 						ifstack:insert{cond, hasprocessed}
@@ -1327,7 +1338,7 @@ function Preproc:__call(args)
 								error("couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
 							end
 							if not self.alreadyIncludedFiles[fn] then
-	--print('include '..fn)
+--print('include '..fn)
 								lines:insert(i, '/* END   '..fn..' */')
 								
 								
@@ -1433,6 +1444,8 @@ function Preproc:__call(args)
 							lines:remove(i)
 							i = i - 1
 						end
+					elseif cmd == '_Replacement' then
+						-- msvc macro
 					else
 						error("can't handle that preprocessor yet: "..l)
 					end

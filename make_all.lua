@@ -90,6 +90,7 @@ ffi.cdef[[
 
 		-- verify ...
 		-- can't use -lext because that will load ffi/c stuff which could cause clashes in cdefs
-		print(exec([[luajit -e "assert(load(require 'ext.io'.readfile']]..outpath..[['))()"]]))
+		-- luajit has loadfile, nice.
+		print(exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
 	end
 end

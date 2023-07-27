@@ -82,8 +82,32 @@ local function fixEnumsAndDefineMacrosInterleaved(code)
 	return lines:concat'\n'
 end
 
-return {
-	{inc='<stddef.h>', out='c/stddef.lua'},
+local ffi = require 'ffi'
+local includeList = table()
+
+-- [====[ Begin Windows-specific:
+if ffi.os == 'Windows' then
+	includeList:append{
+
+	-- Windows-only:
+
+		{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
+
+	-- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
+
+		{inc='<stddef.h>', out='Windows/c/stddef.lua'},
+
+		{inc='<time.h>', out='Windows/c/time.lua'},
+	}
+end
+--]====]
+
+-- [====[ Begin Linux-specific:
+if ffi.os == 'Linux' then
+	includeList:append{
+
+	{inc='<stddef.h>', out='Linux/c/stddef.lua'},
+
 	{inc='<features.h>', out='c/features.lua'},
 	{inc='<bits/endian.h>',	out='c/bits/endian.lua'},
 	{inc='<bits/types/locale_t.h>',	out='c/bits/types/locale_t.lua'},
@@ -105,7 +129,7 @@ return {
 			[=[]] require 'ffi.c.__FD_SETSIZE' ffi.cdef[[]=]
 		))
 	end},
-	
+
 	-- depends: bits/types.h
 	{inc='<bits/stdint-intn.h>',	out='c/bits/stdint-intn.lua'},
 	{inc='<bits/types/clockid_t.h>',	out='c/bits/types/clockid_t.lua'},
@@ -116,7 +140,7 @@ return {
 
 	-- depends: bits/types.h bits/endian.h
 	{inc='<bits/types/struct_timespec.h>',	out='c/bits/types/struct_timespec.lua'},
-	
+
 	{inc='<sys/ioctl.h>', out='c/sys/ioctl.lua'},
 
 	{inc='<sys/select.h>', out='c/sys/select.lua', final=function(code)
@@ -127,6 +151,8 @@ return {
 	-- depends: features.h bits/types.h
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
 	{inc='<sys/termios.h>', out='c/sys/termios.lua'},
+
+-- ]====] End Linux-specific:
 
 	-- depends: bits/types.h etc
 	{inc='<sys/stat.h>', out='c/sys/stat.lua', final=function(code)
@@ -173,7 +199,7 @@ return {
 		code = remove_need_macro(code, 'NULL')
 		return code
 	end},
-	
+
 	-- depends: features.h, bits/types/__sigset_t.h
 	{inc='<setjmp.h>', out='c/setjmp.lua'},
 
@@ -239,7 +265,7 @@ end
 		code = remove_need_macro(code, 'NULL')
 		return code
 	end},
-	
+
 	-- depends: bits/types.h
 	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(path'results/c/stdint.lua':read()))()" will give an error:
 	--  `attempt to redefine 'WCHAR_MIN' at line 75
@@ -336,7 +362,7 @@ return setmetatable({}, {
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually extracted from c/setjmp.lua
 	{dontGen=true, inc='<bits/setjmp.h>', out='c/bits/setjmp.lua'},
-	
+
 	{dontGen=true, inc='<bits/dirent.h>', out='c/bits/dirent.lua', final=function(code)
 		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
 		return code
@@ -369,7 +395,7 @@ return setmetatable({}, {
 			code = code:gsub('z_off_t', 'off_t')
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')
-			
+
 			-- add some macros onto the end manually
 			code = code .. [[
 
@@ -508,7 +534,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 				string.patescape'struct SDL_Window;'..'\n'
 				..string.patescape'struct SDL_Renderer;'..'\n'
 				..string.patescape'typedef union SDL_Event SDL_Event;',
-				
+
 				-- simultaneously insert require to ffi/sdl.lua
 				"]] require 'ffi.sdl' ffi.cdef[["
 			)
@@ -532,11 +558,11 @@ return require 'ffi.load' 'cimgui_sdl'
 		out = 'OpenCL.lua',
 		final = function(code)
 			code = commentOutLine(code, 'warning: Need to implement some method to align data here')
-			
+
 			-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
 			-- so fix it here:
 			code = code:gsub(string.patescape"]] require 'ffi.OpenCL' ffi.cdef[[\n", "")
-			
+
 			code = code .. [[
 return require 'ffi.load' 'OpenCL'
 ]]
@@ -630,7 +656,7 @@ return require 'ffi.load' 'lua'
 			return code
 		end,
 	},
-	
+
 	-- depends on limits.h
 	-- because lua.ext uses some ffi stuff, it says "attempt to redefine 'dirent' at line 2"  for my load(path(...):read()) but not for require'results....'
 	{
@@ -641,7 +667,7 @@ return require 'ffi.load' 'lua'
 			return code
 		end,
 	},
-	
+
 	-- depends: sched.h time.h
 	{inc='<pthread.h>', out='c/pthread.lua', final=function(code)
 			code = fixEnumsAndDefineMacrosInterleaved(code)
@@ -690,7 +716,7 @@ return require 'ffi.load' 'lua'
 		code = commentOutLine(code, 'enum { _Complex = 0 };')
 		code = commentOutLine(code, 'enum { complex = 0 };')
 		code = commentOutLine(code, 'enum { _Mdouble_ = 0 };')
-		
+
 		-- this uses define<=>typedef which always has some trouble
 		-- and this uses redefines which luajit ffi cant do so...
 		-- TODO from
@@ -719,7 +745,7 @@ return require 'ffi.load' 'lua'
 
 		return code
 	end},
-	
+
 	-- depends on complex.h
 	{inc='<cblas.h>', out='cblas.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
@@ -763,10 +789,10 @@ return require 'ffi.load' 'zip'
 	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
-		
+
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
 		code = code:gsub('int void', 'int type');
-		
+
 		code = code .. [[
 return require 'ffi.load' 'png'
 ]]
@@ -790,7 +816,7 @@ return require 'ffi.load' 'png'
 			--	but stdint doesnt include wchar.h ... so WCHAR_MIN isnt defined
 			-- but stdint does define WCHAR_MIN and max on its own ... why ... why doesn't it just include wchar.h?
 			-- so hmm...
-			
+
 			code = code .. [[
 return require 'ffi.load' 'SDL2'
 ]]
@@ -931,4 +957,8 @@ return require 'ffi.load' 'openal'
 			openal = {Windows = 'OpenAL32'},
 		},
 	},
-}
+
+	}
+end
+
+return includeList

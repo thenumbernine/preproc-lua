@@ -34,7 +34,8 @@ The stripped headers are specific to LuaJIT:
 optional-args:
 	-I<include-dir> = add extra include directory search path
 	-M<macro-name>[=<macro-value>] = add extra macro
-	-skip <include-file> = include and skip the specified include -- do not include its contents in the header generation.
+	-silent <include-file> = include the specified file, but do not include its contents in the header generation.
+	-skip <include-file> = don't include the specified file.
 
 ## `preproc.lua` ##
 
@@ -100,3 +101,8 @@ TODO should .code hold the last file processed, or the total files processed?
 TODO If I'm in the middle of a typedef or enum or something with {}'s, I should wait to insert the #define => enum{} code.  (pthread.h)
 
 TODO if you have a number value like enum {A = 0}; then do recursive def #define A A, which because it's a number value is turned into an enum, then this will still insert that second enum.  (pthread.h)
+
+## Windows
+
+Right now this whole setup is made specifically for Linux.
+I'm slowly working towards Windows support as well, and with that means a giant cross-platform cross-arch include file repository.

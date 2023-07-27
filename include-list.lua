@@ -373,7 +373,7 @@ return setmetatable({}, {
 			-- add some macros onto the end manually
 			code = code .. [[
 
-local zlib = ffi.load'z'
+local zlib = require 'ffi.load' 'z'
 local wrapper
 wrapper = setmetatable({
 	ZLIB_VERSION = "1.2.11",
@@ -423,7 +423,7 @@ return wrapper
 -- WARNING, this is libffi, not luajit ffi
 -- will that make my stupid ?/?.lua LUA_PATH rule screw things up?  if so then move this file ... or rename it to libffi.lua or something
 ]] .. code .. [[
-return ffi.load'ffi'
+return require 'ffi.load' 'ffi'
 ]]
 		return code
 	end},
@@ -432,19 +432,8 @@ return ffi.load'ffi'
 	-- apt install libgif-dev
 	{inc='<gif_lib.h>', out='gif.lua', final=function(code)
 		code = [[
--- gif 5.1.9
 ]] .. code .. [[
-local gif
-if ffi.os == 'OSX' then
-	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libgif.dylib')
-elseif ffi.os == 'Windows' then
-	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/libgif1.dll')
-elseif ffi.os == 'Linux' then
-	gif = ffi.load'gif'
-else
-	gif = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libgif.so')
-end
-return gif
+return require 'ffi.load' 'gif'
 ]]
 		return code
 	end},
@@ -459,7 +448,7 @@ return gif
 		code = remove_need_macro(code, 'wchar_t')
 		code = remove_need_macro(code, '__va_list')
 		code = code .. [[
-return ffi.load 'cfitsio'
+return require 'ffi.load' 'cfitsio'
 ]]
 		return code
 	end},
@@ -467,29 +456,39 @@ return ffi.load 'cfitsio'
 	-- apt install libnetcdf-dev
 	{inc='<netcdf.h>', out='netcdf.lua', flags=string.trim(io.readproc'pkg-config --cflags netcdf'), final=function(code)
 		code = code .. [[
-return ffi.load'libnetcdf'
+return require 'ffi.load' 'netcdf'
 ]]
 		return code
 	end},
 
 	-- apt install libhdf5-dev
 	-- depends: inttypes.h
-	{inc='<hdf5.h>', out='hdf5.lua', flags=string.trim(io.readproc'pkg-config --cflags hdf5'), final=function(code)
-		-- old header comment:
-			-- for gcc / ubuntu looks like off_t is defined in either unistd.h or stdio.h, and either are set via testing/setting __off_t_defined
-			-- in other words, the defs in here are getting more and more conditional ...
-			-- pretty soon a full set of headers + full preprocessor might be necessary
-			-- TODO regen this on Windows and compare?
-		code = removeWarnings(code)	-- LLONG_MIN
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
-		code = remove_need_macro(code, '__va_list')
-		code = code .. [[
---return ffi.load 'hdf5'	-- pkg-config --libs hdf5
-return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
+	{
+		inc = '<hdf5.h>',
+		out = 'hdf5.lua',
+		flags = string.trim(io.readproc'pkg-config --cflags hdf5'),
+		final = function(code)
+			-- old header comment:
+				-- for gcc / ubuntu looks like off_t is defined in either unistd.h or stdio.h, and either are set via testing/setting __off_t_defined
+				-- in other words, the defs in here are getting more and more conditional ...
+				-- pretty soon a full set of headers + full preprocessor might be necessary
+				-- TODO regen this on Windows and compare?
+			code = removeWarnings(code)	-- LLONG_MIN
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
+			code = code .. [[
+return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 ]]
-		return code
-	end},
+			return code
+		end,
+		-- ffi.load override information
+		-- TODO somehow insert this into ffi/load.lua without destroying the file
+		-- don't modify require 'ffi.load' within 'ffi.hdf5', since the whole point of fif.load is for the user to provide overrides to the lib loc that the header needs.
+		ffiload = {
+			hdf5 = {Linux = '/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so'},
+		},
+	},
 
 	{
 		-- cimgui has these 3 files together:
@@ -521,17 +520,17 @@ return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
 			code = code:gsub('glsl_version = nullptr', 'glsl_version')
 
 			code = code .. [[
-return ffi.load'cimgui_sdl'
+return require 'ffi.load' 'cimgui_sdl'
 ]]
 			return code
 		end,
 	},
 
 	{
-		inc='<CL/cl.h>',
-		moreincs={'<CL/cl_gl.h>'},
-		out='OpenCL.lua',
-		final=function(code)
+		inc = '<CL/cl.h>',
+		moreincs = {'<CL/cl_gl.h>'},
+		out = 'OpenCL.lua',
+		final = function(code)
 			code = commentOutLine(code, 'warning: Need to implement some method to align data here')
 			
 			-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
@@ -539,19 +538,7 @@ return ffi.load'cimgui_sdl'
 			code = code:gsub(string.patescape"]] require 'ffi.OpenCL' ffi.cdef[[\n", "")
 			
 			code = code .. [[
-local libs = ffi_OpenCL_libs or {
-	OSX = {x86 = 'OpenCL.framework/OpenCL', x64 = 'OpenCL.framework/OpenCL'},
-	Windows = {x86 = 'opencl.dll', x64 = 'opencl.dll'},
-	Linux = {
-	x86 = 'libOpenCL.so',
-	x64 = 'libOpenCL.so',
-	arm = 'bin/Linux/arm/libOpenCL.so'},
-	BSD = {x86 = 'libOpenCL.so', x64 = 'libOpenCL.so'},
-	POSIX = {x86 = 'libOpenCL.so', x64 = 'libOpenCL.so'},
-	Other = {x86 = 'libOpenCL.so', x64 = 'libOpenCL.so'},
-}
-local lib = ffi_OpenCL_lib or libs[ffi.os][ffi.arch]
-return ffi.load(lib)
+return require 'ffi.load' 'OpenCL'
 ]]
 			return code
 		end,
@@ -580,12 +567,26 @@ return ffi.load(lib)
 	-- linux is using 2.1.2 which generates no different than 2.0.3
 	--  based on apt package libturbojpeg0-dev
 	-- windows is using 2.0.4 just because 2.0.3 and cmake is breaking for msvc
-	{inc='<jpeglib.h>', out='Linux/jpeg.lua', final=function(code)
-		code = [[
+	{
+		inc = '<jpeglib.h>',
+		out = 'Linux/jpeg.lua',
+		final = function(code)
+			code = [[
 require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
 ]] .. code
-		return code
-	end},
+			return code
+		end,
+		ffiload = {
+			jpeg = {
+				-- For Windows msvc turbojpeg 2.0.3 cmake wouldn't build, so i used 2.0.4 instead
+				-- I wonder if this is the reason for the few subtle differences
+				-- TODO rebuild linux with 2.0.4 and see if they go away?
+				Windows = 'jpeg8',
+				-- for Linux, libturbojpeg 2.1.2 (which is not libjpeg-turbo *smh* who named this)
+				-- the header generated matches libturbojpeg 2.0.3 for Ubuntu ... except the version macros
+			},
+		},
+	},
 
 	-- used by GL, GLES1, GLES2 ...
 	{
@@ -606,7 +607,7 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 		out = 'Linux/OpenGL.lua',
 		final = function(code)
 			code = code .. [[
-return ffi.load'GL'
+return require 'ffi.load' 'GL'
 ]]
 			return code
 		end,
@@ -623,20 +624,8 @@ return ffi.load'GL'
 			code = remove_need_macro(code, 'NULL')
 			code = remove_need_macro(code, '__va_list')
 			code = [[
--- lua 5.4
 ]] .. code .. [[
-local lua
-if ffi.os == 'OSX' then
-	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/liblua.dylib')
-elseif ffi.os == 'Windows' then
-	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/liblua1.dll')
-elseif ffi.os == 'Linux' then
-	-- TODO pkg-config --libs lua ?
-	lua = ffi.load'lua'
-else
-	lua = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/liblua.so')
-end
-return lua
+return require 'ffi.load' 'lua'
 ]]
 			return code
 		end,
@@ -736,8 +725,7 @@ return lua
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = [[
 ]] .. code .. [[
-local blas = ffi.load'openblas'
-return blas
+return require 'ffi.load' 'openblas'
 ]]
 		return code
 	end},
@@ -749,8 +737,7 @@ return blas
 	-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
 	{inc='<lapack.h>', out='lapack.lua', final=function(code)
 		code = code .. [[
-local lapack = ffi.load'lapack'
-return lapack
+return require 'ffi.load' 'lapack'
 ]]
 		return code
 	end},
@@ -758,8 +745,7 @@ return lapack
 	-- needs lapack_int replaced with int, except the enum def line
 	{inc='<lapacke.h>', out='lapacke.lua', final=function(code)
 		code = code .. [[
-local lapacke = ffi.load'lapacke'
-return lapacke
+return require 'ffi.load' 'lapacke'
 ]]
 		return code
 	end},
@@ -768,8 +754,7 @@ return lapacke
 	-- TODO #define ZIP_OPSYS_* is hex values, should be enums, but they are being commented out ...
 	{inc='<zip.h>', out='zip.lua', final=function(code)
 		code = code .. [[
-local zip = ffi.load'zip'
-return zip
+return require 'ffi.load' 'zip'
 ]]
 		return code
 	end},
@@ -783,17 +768,7 @@ return zip
 		code = code:gsub('int void', 'int type');
 		
 		code = code .. [[
-local png
-if ffi.os == 'OSX' then
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/OSX/libpng.dylib')
-elseif ffi.os == 'Windows' then
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/Windows/' .. ffi.arch .. '/png.dll')
-elseif ffi.os == 'Linux' then
-	png = ffi.load'png'
-else
-	png = ffi.load(os.getenv'LUAJIT_LIBPATH' .. '/bin/linux/libpng.so')
-end
-return png
+return require 'ffi.load' 'png'
 ]]
 		return code
 	end},
@@ -817,20 +792,7 @@ return png
 			-- so hmm...
 			
 			code = code .. [[
-local libs = ffi_luajit_libs or {
-	OSX     = { x86 = "$LUAJIT_LIBPATH/bin/OSX/sdl.dylib", x64 = "$LUAJIT_LIBPATH/bin/OSX/sdl.dylib" },
-	Windows = { x86 = "$LUAJIT_LIBPATH/bin/Windows/x86/SDL2.dll", x64 = "$LUAJIT_LIBPATH/bin/Windows/x64/SDL2.dll" },
-	--Windows = { x86 = "$LUAJIT_LIBPATH/bin/Windows/x86/SDL.dll", x64 = "$LUAJIT_LIBPATH/bin/Windows/x64/SDL.dll" },
-	Linux   = { },
-	BSD     = { x86 = "bin/luajit32.so",  x64 = "bin/luajit64.so" },
-	POSIX   = { x86 = "bin/luajit32.so",  x64 = "bin/luajit64.so" },
-	Other   = { x86 = "bin/luajit32.so",  x64 = "bin/luajit64.so" },
-}
-local sdl  = ffi.load(
-	(libs[ ffi.os ][ ffi.arch ] or "SDL2")
-	:gsub('%$([_%w]+)', os.getenv)
-)
-return sdl
+return require 'ffi.load' 'SDL2'
 ]]
 			return code
 		end,
@@ -852,7 +814,7 @@ return sdl
 			-- TODO the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
 			-- ... I need to comment it out *HERE*.
 			code = code .. [[
-local lib = ffi.load'vorbisfile'
+local lib = require 'ffi.load' 'vorbisfile'
 
 -- don't use stdio, use ffi.C
 -- stdio risks browser shimming open and returning a Lua function
@@ -921,7 +883,7 @@ return setmetatable({
 	EGL_NO_SYNC = ffi.cast('EGLSync',0),
 	EGL_NO_IMAGE = ffi.cast('EGLImage',0),
 }, {
-	__index = ffi.load'EGL',
+	__index = require 'ffi.load' 'EGL',
 })
 ]]
 		end,
@@ -931,7 +893,7 @@ return setmetatable({
 		out = 'OpenGLES1.lua',
 		final = function(code)
 			return code .. [[
-return ffi.load'GLESv1_CM'
+return require 'ffi.load' 'GLESv1_CM'
 ]]
 		end,
 	},
@@ -940,7 +902,7 @@ return ffi.load'GLESv1_CM'
 		out = 'OpenGLES2.lua',
 		final = function(code)
 			return code .. [[
-return ffi.load'GLESv2'
+return require 'ffi.load' 'GLESv2'
 ]]
 		end,
 	},
@@ -950,7 +912,7 @@ return ffi.load'GLESv2'
 		final = function(code)
 			-- why don't I have a GLES3 library when I have GLES3 headers?
 			return code .. [[
-return ffi.load'GLESv2'
+return require 'ffi.load' 'GLESv2'
 ]]
 		end,
 	},
@@ -962,13 +924,7 @@ return ffi.load'GLESv2'
 		out = 'OpenAL.lua',
 		final = function(code)
 			return code .. [[
-if ffi.os == 'OSX' then
-	return ffi.load'OpenAL.framework/OpenAL'
-elseif ffi.os == 'Windows' then
-	return ffi.load'openal32'
-else
-	return ffi.load'openal'
-end
+return require 'ffi.load' 'openal'
 ]]
 		end,
 	},

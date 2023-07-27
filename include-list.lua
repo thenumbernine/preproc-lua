@@ -492,16 +492,16 @@ return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
 	end},
 
 	{
-		flags = '-I../../cpp/ImGuiCommon/include -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
 		-- cimgui has these 3 files together:
 		-- OpenGL i had to separate them
 		-- and OpenGL i put them in OS-specific place
 		inc = '"cimgui.h"',
 		moreincs = {
-			'"imgui_impl_sdl.h"',
-			'"imgui_impl_opengl2.h"',
+			'"imgui_impl_sdl2.h"',
+			'"imgui_impl_opengl3.h"',
 		},
 		skipincs = {'"imgui.h"'},	-- full of C++ so don't include it
+		flags = '-I/usr/local/include/imgui-1.89.7dock -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
 		out = 'cimgui.lua',
 		final = function(code)
 			-- this is already in SDL
@@ -516,6 +516,9 @@ return ffi.load('/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so')
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')
 			code = remove_need_macro(code, '__va_list')
+
+			-- looks like in the backend file there's one default parameter value ...
+			code = code:gsub('glsl_version = nullptr', 'glsl_version')
 
 			code = code .. [[
 return ffi.load'cimgui_sdl'

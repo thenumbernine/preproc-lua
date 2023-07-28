@@ -18,6 +18,13 @@ local incfiles
 
 local includeList = require 'include-list'
 
+-- remove all those that pertain to other os/arch
+includeList = includeList:filter(function(inc)
+	if inc.os ~= nil and inc.os ~= ffi.os then return end
+	if inc.arch ~= nil and inc.arch ~= ffi.arch then return end
+	return true
+end)
+
 -- 1) store the search => found include names, then
 function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile

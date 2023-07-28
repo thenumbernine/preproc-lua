@@ -5,6 +5,8 @@
 local string = require 'ext.string'
 local table = require 'ext.table'
 local io = require 'ext.io'
+local tolua = require 'ext.tolua'
+local template = require 'template'
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	return (code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', ''))
@@ -84,28 +86,35 @@ end
 
 local ffi = require 'ffi'
 local includeList = table()
+		
+-- I'll mark files that appear in both Windows and Linux as "Windows/Linux split file"
+-- those will go in [os]/[path]
+-- and then in just [path] will be a file that determines the file based on os (and arch?)
 
 -- [====[ Begin Windows-specific:
-if ffi.os == 'Windows' then
-	includeList:append{
+includeList:append(table{
 
-	-- Windows-only:
+-- Windows-only:
 
-		{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
+	{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
 
-	-- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
+-- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
 
-		{inc='<stddef.h>', out='Windows/c/stddef.lua'},
+	-- Windows/Linux split file
+	{inc='<stddef.h>', out='Windows/c/stddef.lua'},
 
-		{inc='<time.h>', out='Windows/c/time.lua'},
-	}
-end
+	-- Windows/Linux split file
+	{inc='<time.h>', out='Windows/c/time.lua'},
+}:mapi(function(inc)
+	inc.os = 'Windows'
+	return inc
+end))
 --]====]
 
 -- [====[ Begin Linux-specific:
-if ffi.os == 'Linux' then
-	includeList:append{
+includeList:append(table{
 
+	-- Windows/Linux split file
 	{inc='<stddef.h>', out='Linux/c/stddef.lua'},
 
 	{inc='<features.h>', out='c/features.lua'},
@@ -152,7 +161,13 @@ if ffi.os == 'Linux' then
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
 	{inc='<sys/termios.h>', out='c/sys/termios.lua'},
 
+}:mapi(function(inc)
+	inc.os = 'Linux'	-- meh?
+	return inc
+end))
+
 -- ]====] End Linux-specific:
+includeList:append(table{
 
 	-- depends: bits/types.h etc
 	{inc='<sys/stat.h>', out='c/sys/stat.lua', final=function(code)
@@ -285,12 +300,18 @@ end
 
 	-- depends: features.h stddef.h bits/types.h and too many really
 	-- this and any other file that requires stddef might have these lines which will have to be removed:
-	{inc='<time.h>', out='c/time.lua', final=function(code)
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
-		code = replace_bits_types_builtin(code, 'pid_t')
-		return code
-	end},
+	-- Windows/Linux split file
+	{
+		inc = '<time.h>',
+		out = 'Linux/c/time.lua',
+		os = 'Linux',
+		final = function(code)
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = replace_bits_types_builtin(code, 'pid_t')
+			return code
+		end,
+	},
 
 	-- depends on too much
 	{inc='<stdarg.h>', out='c/stdarg.lua', final=function(code)
@@ -957,8 +978,59 @@ return require 'ffi.load' 'openal'
 			openal = {Windows = 'OpenAL32'},
 		},
 	},
+})
 
-	}
+-- now detect any duplicate #include paths and make sure they are going to distinct os-specific destination file names
+-- and in those cases, add in a splitting file that redirects to the specific OS
+local detectDups = {}
+for _,inc in ipairs(includeList) do
+	detectDups[inc.inc] = detectDups[inc.inc] or {}
+	local det = detectDups[inc.inc][inc.os or 'all']
+	if det then
+		print("got two entries that have matching include name, and at least one is not os-specific: "..tolua{
+			det,
+			inc,
+		})
+	end
+	detectDups[inc.inc][inc.os or 'all'] = inc
+end
+for incname, det in pairs(detectDups) do
+	if type(det) == 'table' then
+		local keys = table.keys(det)
+		if #keys > 1 then
+			local base
+			for os,inc in pairs(det) do
+				assert(inc.os, "have a split file and one entry doesn't have an os... "..tolua(inc))
+				local incbase = inc.out:match('^'..inc.os..'/(.*)$')
+				if not incbase then
+					error("expected os "..tolua(inc.os).." prefix, bad formatted out for "..tolua(inc))
+				end
+				if base == nil then
+					base = incbase
+				else
+					assert(incbase == base, "for split file, assumed output is [os]/[path] ,but didn't get it for "..tolua(inc))
+				end
+			end
+			-- [[ add in the split file
+			includeList:insert{
+				inc = incname,
+				out = base,
+				-- TODO this assumes it is Windows vs all, and 'all' is stored in Linux ...
+				forcecode = template([[
+local ffi = require 'ffi'
+if ffi.os == 'Windows' then
+	return require 'ffi.Windows.<?=req?>'
+else
+	return require 'ffi.Linux.<?=req?>'
+end
+]], 			{
+					req = (assert(base:match'(.*)%.lua', 'expcted inc.out to be ext .lua')
+						:gsub('/', '.')),
+				})
+			}
+			--]]
+		end
+	end
 end
 
 return includeList

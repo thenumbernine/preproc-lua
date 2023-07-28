@@ -15,12 +15,15 @@ This generates a specific luajit loader file for a specific C include file.
 It accepts either a specific header listed in the `include-list`, or it can generate all provided at once.
 This is separate of `generate.lua` because I need to use separate luajit ffi cdef states, so I just use separate processes.
 
-This is close to becoming what the `include-lua` project intended to be.  However if you look inside the `include-list` you will see the amount of hand-tuning still required for this to work.
+This is close to becoming what the `include-lua` project intended to be.
+However if you look inside the `include-list` you will see the amount of hand-tuning still required for this to work.
 Until that can all be automated, `include-lua` will be on the shelf for a while.
 
 ## `include-list.lua` ##
 
-This contains a list of C to Lua files.  It is used for automatic generation of all files. It is also used for determining when to replace an included file with a previously-generated file. 
+This contains a list of C to Lua files.
+It is used for automatic generation of all files.
+It is also used for determining when to replace an included file with a previously-generated file. 
 
 ## `generate.lua` ##
 
@@ -32,10 +35,10 @@ The stripped headers are specific to LuaJIT:
 `luajit generate.lua <optional-args> <include-file1> <include-file2> ...`
 
 optional-args:
-	-I<include-dir> = add extra include directory search path
-	-M<macro-name>[=<macro-value>] = add extra macro
-	-silent <include-file> = include the specified file, but do not include its contents in the header generation.
-	-skip <include-file> = don't include the specified file.
+	- -I<include-dir> = add extra include directory search path
+	- -M<macro-name>[=<macro-value>] = add extra macro
+	- -silent <include-file> = include the specified file, but do not include its contents in the header generation.
+	- -skip <include-file> = don't include the specified file.
 
 ## `preproc.lua` ##
 

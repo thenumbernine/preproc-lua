@@ -116,6 +116,7 @@ includeList:append(table{
 
 -- Windows-only:
 	{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
+	{inc='<corecrt_wstring.h>', out='Windows/c/corecrt_wstring.lua'},
 
 -- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
 	{inc='<stddef.h>', out='Windows/c/stddef.lua'},

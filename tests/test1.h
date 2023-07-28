@@ -1,13 +1,17 @@
-#define X
-
-#if 0
-#elif defined(X)	// eval = false, preveval = true
+// matches the lua.h header
+// should cause error "double" if it works
+#define LUA_FLOAT_FLOAT 1
+#define LUA_FLOAT_DOUBLE 2
+#define LUA_FLOAT_LONGDOUBLE 3
+#define LUA_FLOAT_DEFAULT LUA_FLOAT_DOUBLE
+#define LUA_FLOAT_TYPE LUA_FLOAT_DEFAULT
+#if LUA_FLOAT_TYPE == LUA_FLOAT_FLOAT
+#error "float"
+#elif LUA_FLOAT_TYPE == LUA_FLOAT_DOUBLE
+#error "double"
+#elif LUA_FLOAT_TYPE == LUA_FLOAT_LONGDOUBLE
+#error "longdouble"
 #else
-	#error "failed to eval elif true macro"
+#error "unknown"
 #endif
-
-#if 0
-#if MACRO_NOT_DEFINED(X)	// eval = false, preveval = true ... this will fail to parse
-#error "failed to skip unevaluated expression of undefined macro"
-#endif
-#endif
+#error "error"

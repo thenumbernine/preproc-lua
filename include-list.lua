@@ -116,6 +116,20 @@ includeList:append(table{
 
 -- Windows-only:
 	{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
+
+	{inc='<corecrt_share.h>', out='Windows/c/corecrt_share.lua'},
+
+	-- uses corecrt_share.h
+	{
+		inc = '<corecrt_wio.h>',
+		out = 'Windows/c/corecrt_wio.lua',
+		final = function(code)
+			code = code:gsub('enum { _wfinddata_t = 0 };', '')
+			code = code:gsub('enum { _wfinddatai64_t = 0 };', '')
+			return code
+		end,
+	},
+
 	{inc='<corecrt_wstring.h>', out='Windows/c/corecrt_wstring.lua'},
 
 -- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
@@ -188,7 +202,54 @@ typedef intptr_t ssize_t;
 		end,
 	},
 
-	-- depends on: errno.h corecrt_wstring.h
+	-- depends on: corecrt_wio.h, corecrt_share.h
+	-- really it just includes corecrt_io.h
+	{
+		inc = '<io.h>',
+		out = 'Windows/c/io.lua',
+		forceSplit = true,
+		final = function(code)
+			code = code:gsub('enum { _finddata_t = 0 };', '')
+			code = code:gsub('enum { _finddatai64_t = 0 };', '')
+
+			-- same as in corecrt_wio.h
+			code = code .. [=[
+ffi.cdef[[
+/* #ifdef _USE_32BIT_TIME_T
+	typedef _finddata32_t _finddata_t;
+	typedef _finddata32i64_t _finddatai64_t;
+#else */
+	typedef struct _finddata64i32_t _finddata_t;
+	typedef struct _finddata64_t _finddatai64_t;
+/* #endif */
+]]
+
+local lib = ffi.C
+return setmetatable({
+--[[
+#ifdef _USE_32BIT_TIME_T
+	_findfirst = lib._findfirst32,
+	_findnext = lib._findnext32,
+	_findfirsti64 = lib._findfirst32i64,
+	_findnexti64 = lib._findnext32i64,
+#else
+--]]
+	_findfirst = lib._findfirst64i32,
+	_findnext = lib._findnext64i32,
+	_findfirsti64 = lib._findfirst64,
+	_findnexti64 = lib._findnext64,
+--[[
+#endif
+--]]
+}, {
+	__index = ffi.C,
+})
+]=]
+			return code
+		end,
+	},
+
+	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',
@@ -315,12 +376,10 @@ typedef intptr_t ssize_t;
 			} do
 				code = removeStaticFunction(code, f)
 			end
-			
+
 			-- corecrt_wio.h #define's types that I need, so typedef them here instead
 			-- TODO pick according to the current macros
 			-- but make_all.lua and generate.lua run in  separate processes, so ....
-			code = code:gsub('enum { _wfinddata_t = 0 };', '')
-			code = code:gsub('enum { _wfinddatai64_t = 0 };', '')
 			code = code .. [=[
 ffi.cdef[[
 /* #ifdef _USE_32BIT_TIME_T
@@ -341,7 +400,7 @@ return setmetatable({
 	_wfindfirsti64 = lib._wfindfirst32i64,
 	_wfindnexti64 = lib._wfindnext32i64,
 #else
---]] 
+--]]
 	_wfindfirst = lib._wfindfirst64i32,
 	_wfindnext = lib._wfindnext64i32,
 	_wfindfirsti64 = lib._wfindfirst64,
@@ -352,7 +411,6 @@ return setmetatable({
 }, {
 	__index = ffi.C,
 })
-
 ]=]
 			return code
 		end,
@@ -1275,7 +1333,7 @@ for incname, det in pairs(detectDups) do
 				inc = incname,
 				out = base,
 				-- TODO this assumes it is Windows vs all, and 'all' is stored in Linux ...
-				-- TODO autogen by keys.  non-all <-> if os == $key, all <-> else, no 'all' present <-> else error "idk your os" unless you wanna have Linux the default 
+				-- TODO autogen by keys.  non-all <-> if os == $key, all <-> else, no 'all' present <-> else error "idk your os" unless you wanna have Linux the default
 				forcecode = template([[
 local ffi = require 'ffi'
 if ffi.os == 'Windows' then

@@ -176,20 +176,24 @@ return setmetatable({
 		end,
 	},
 
-	-- this isn't in Windows at all I guess, but for cross-platform's sake, I'll put in some common POSIX defs I need
 	{
 		inc = '<sys/types.h>',
 		out = 'Windows/c/sys/types.lua',
-		-- gcc x64 defines ssize_t = __ssize_t, __ssize_t = long int
-		-- I'm guessing in gcc 'long int' is 8 bytes
-		-- msvc x64 'long int' is just 4 bytes ...
-		-- TODO proly arch-specific too
-		forcecode = [=[
-local ffi = require 'ffi'
+		final = function(code)
+			code = code .. [=[
+
+-- this isn't in Windows at all I guess, but for cross-platform's sake, I'll put in some common POSIX defs I need
+-- gcc x64 defines ssize_t = __ssize_t, __ssize_t = long int
+-- I'm guessing in gcc 'long int' is 8 bytes
+-- msvc x64 'long int' is just 4 bytes ...
+-- TODO proly arch-specific too
+
 ffi.cdef[[
 typedef intptr_t ssize_t;
 ]]
-]=],
+]=]
+			return code
+		end,
 	},
 
 	{
@@ -437,6 +441,20 @@ return setmetatable({
 		out = 'Windows/c/stdio.lua',
 	},
 
+	-- depends: sys/types.h
+	{
+		inc = '<sys/stat.h>',
+		out = 'Windows/c/sys/stat.lua',
+		final = function(code)
+			-- windows help says "always include sys/types.h first"
+			-- ... smh why couldn't they just include it themselves?
+			code = [[
+require 'ffi.c.sys.types'
+]] .. code
+			return code
+		end,
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
@@ -564,6 +582,14 @@ return setmetatable({
 		end,
 	},
 
+	-- depends: bits/types.h etc
+	{inc='<sys/stat.h>', out='Linux/c/sys/stat.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'gid_t')
+		code = replace_bits_types_builtin(code, 'uid_t')
+		code = replace_bits_types_builtin(code, 'off_t')
+		return code
+	end},
+
 	-- put newly inserted entries here
 
 	-- depends on too much
@@ -598,14 +624,6 @@ end))
 
 -- ]====] End Linux-specific:
 includeList:append(table{
-
-	-- depends: bits/types.h etc
-	{inc='<sys/stat.h>', out='c/sys/stat.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'gid_t')
-		code = replace_bits_types_builtin(code, 'uid_t')
-		code = replace_bits_types_builtin(code, 'off_t')
-		return code
-	end},
 
 	-- depends: bits/libc-header-start.h linux/limits.h
 	-- with this the preproc gets a warning:

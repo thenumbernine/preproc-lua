@@ -861,30 +861,34 @@ includeList:append(table{
 	{inc='<setjmp.h>', out='c/setjmp.lua'},
 
 	-- depends: features.h bits/types.h
-	{inc='<unistd.h>', out='c/unistd.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'gid_t')
-		code = replace_bits_types_builtin(code, 'uid_t')
-		code = replace_bits_types_builtin(code, 'off_t')
-		code = replace_bits_types_builtin(code, 'pid_t')
-		code = replace_bits_types_builtin(code, 'ssize_t')
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
+	{
+		inc = '<unistd.h>',
+		out = 'Linux/c/unistd.lua',
+		final = function(code)
+			code = replace_bits_types_builtin(code, 'gid_t')
+			code = replace_bits_types_builtin(code, 'uid_t')
+			code = replace_bits_types_builtin(code, 'off_t')
+			code = replace_bits_types_builtin(code, 'pid_t')
+			code = replace_bits_types_builtin(code, 'ssize_t')
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
 
-		-- both unistd.h and stdio.h have SEEK_* defined, so ...
-		-- you'll have to manually create this file
-		code = replace_SEEK(code)
+			-- both unistd.h and stdio.h have SEEK_* defined, so ...
+			-- you'll have to manually create this file
+			code = replace_SEEK(code)
 
-		code = code:gsub(
-			-- TODO i'm sure this dir will change in the future ...
-			string.patescape('/* BEGIN /usr/include/x86_64-linux-gnu/bits/confname.h */')
-			..'.*'
-			..string.patescape('/* END   /usr/include/x86_64-linux-gnu/bits/confname.h */'),
-			[[
+			code = code:gsub(
+				-- TODO i'm sure this dir will change in the future ...
+				string.patescape('/* BEGIN /usr/include/x86_64-linux-gnu/bits/confname.h */')
+				..'.*'
+				..string.patescape('/* END   /usr/include/x86_64-linux-gnu/bits/confname.h */'),
+				[[
 
 /* TODO here I skipped conframe because it was too many mixed enums and ddefines => enums */
 ]]
-		)
-		code = code .. [[
+			)
+--[=[ TODO this goes in the manually-created split file in ffi.c.unistd
+			code = code .. [[
 -- I can't change ffi.C.getcwd to ffi.C._getcwd in the case of Windows
 local lib = ffi.C
 if ffi.os == 'Windows' then
@@ -900,8 +904,14 @@ else
 	return lib
 end
 ]]
-		return code
-	end},
+--]=]			
+			-- but for interchangeability with Windows ...
+			code = code .. [[
+return ffi.C
+]]
+			return code
+		end,
+	},
 
 	-- depends: stddef.h bits/types/time_t.h bits/types/struct_timespec.h
 	{inc='<sched.h>', out='c/sched.lua', final=function(code)

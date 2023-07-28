@@ -2,11 +2,16 @@
 -- this is used for automated generation
 -- this is also used during generation for swapping out #includes with require()'s of already-generated files
 
+local ffi = require 'ffi'
+local template = require 'template'
 local string = require 'ext.string'
 local table = require 'ext.table'
 local io = require 'ext.io'
 local tolua = require 'ext.tolua'
-local template = require 'template'
+
+-- TODO for all these .final() functions,
+-- wrap them in a function that detects if the modification took place, and writes a warning to stderr if it didn't.
+-- that way as versions increment I can know which filters are no longer needed.
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	return (code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', ''))
@@ -84,7 +89,6 @@ local function fixEnumsAndDefineMacrosInterleaved(code)
 	return lines:concat'\n'
 end
 
-local ffi = require 'ffi'
 local includeList = table()
 		
 -- I'll mark files that appear in both Windows and Linux as "Windows/Linux split file"

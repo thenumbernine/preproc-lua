@@ -191,21 +191,49 @@ if ffi.os == 'Windows' then
 #define _WIN64	1
 
 // <vcruntime.h> has these: (I'm skipping it for now)
+#define _VCRTIMP
 #define _CRT_BEGIN_C_HEADER
 #define _CRT_END_C_HEADER
+#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_INSECURE_DEPRECATE(Replacement)
+#define _CRT_INSECURE_DEPRECATE_MEMORY(Replacement)
+#define _HAS_NODISCARD 0
+#define _NODISCARD
+#define __CLRCALL_PURE_OR_CDECL __cdecl
+#define __CRTDECL __CLRCALL_PURE_OR_CDECL
+#define _CRT_DEPRECATE_TEXT(_Text)
 
-// <sal.h> has these:  (included by <vcruntime.h>)
-#define _In_
-#define _In_opt_z_
-#define _Out_
-#define _Outptr_
-#define _Outref_
-#define _Inout_
-#define _Ret_
-#define _Field_range_(min,max)
+// correct me if I'm wrong but this macro says no inlines?
+//#define __midl
+// hmm, nope, it just disabled everything
+// this one seems to lose some inlines:
+#define __STDC_WANT_SECURE_LIB__ 0
+// how about this one?
+//#define RC_INVOKED
+// ...sort of but in corecrt.h if you do set it then you have to set these as well:
+// too much of a mess ...
 ]]
 
+
+	-- <sal.h> has these:  (included by <vcruntime.h>)
+	for l in io.lines[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\include\sal.h]] do
+		local rest = l:match'^#define%s+(.*)$'
+		if rest then
+			local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
+			if k then
+				preproc('#define '..k..'('..params..')')
+			else
+				local k, v = rest:match'^(%S+)%s+(.-)$'
+				if k then
+					preproc('#define '..k)
+				end
+			end
+		end
+	end
+
 	skipfiles:insert'<vcruntime.h>'
+	skipfiles:insert'<vcruntime_string.h>'
+	--skipfiles:insert'<corecrt_memcpy_s.h>'	-- contains inline functions
 
 	-- how to know where these are?
 	preproc:addIncludeDirs({

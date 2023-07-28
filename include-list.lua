@@ -91,23 +91,17 @@ end
 
 local includeList = table()
 		
--- I'll mark files that appear in both Windows and Linux as "Windows/Linux split file"
--- those will go in [os]/[path]
+-- files found in multiple OS's will go in [os]/[path]
 -- and then in just [path] will be a file that determines the file based on os (and arch?)
 
 -- [====[ Begin Windows-specific:
 includeList:append(table{
 
 -- Windows-only:
-
 	{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
 
 -- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
-
-	-- Windows/Linux split file
 	{inc='<stddef.h>', out='Windows/c/stddef.lua'},
-
-	-- Windows/Linux split file
 	{inc='<time.h>', out='Windows/c/time.lua'},
 
 	-- this isn't in Windows at all I guess, but for cross-platform's sake, I'll put in some common POSIX defs I need
@@ -126,6 +120,17 @@ typedef intptr_t ssize_t;
 ]=],
 	},
 
+	{
+		inc = '<string.h>',
+		out = 'Windows/c/string.lua',
+		-- TODO final() that outputs a wrapper that replaces calls to all the default POSIX functions with instead calls to the alternative safe ones
+		final = function(code)
+			-- in a perfect world this will just remove the _wcstok inline function
+			code = code:gsub(string.patescape('static __inline wchar_t* __cdecl _wcstok')..'%(.-%) {.-}', '')
+			return code
+		end,
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
@@ -135,7 +140,6 @@ end))
 -- [====[ Begin Linux-specific:
 includeList:append(table{
 
-	-- Windows/Linux split file
 	{inc='<stddef.h>', out='Linux/c/stddef.lua'},
 
 	{inc='<features.h>', out='c/features.lua'},
@@ -193,6 +197,48 @@ includeList:append(table{
 		return code
 	end},
 
+	{inc='<linux/limits.h>', out='c/linux/limits.lua', final=function(code)
+		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+		return code
+	end},
+
+-- requires manual manipulation:
+	-- depends: features.h
+	-- this is here for require() insertion but cannot be used for generation
+	-- it must be manually created
+	--
+	-- they run into the "never include this file directly" preproc error
+	-- so you'll have to manually cut out the generated macros from another file
+	--  and insert the code into a file in the results folder
+	-- also anything that includes this will have the line before it:
+	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
+	-- and that will have to be removed
+	{dontGen=true, inc='<bits/libc-header-start.h>', out='c/bits/libc-header-start.lua', final=function(code)
+		return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+	end},
+
+	-- depends: features.h stddef.h bits/libc-header-start.h
+	{inc='<string.h>', out='Linux/c/string.lua', final=function(code)
+		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		code = remove_need_macro(code, 'size_t')
+		code = remove_need_macro(code, 'NULL')
+		return code
+	end},
+
+	-- depends: features.h stddef.h bits/types.h and too many really
+	-- this and any other file that requires stddef might have these lines which will have to be removed:
+	{
+		inc = '<time.h>',
+		out = 'Linux/c/time.lua',
+		os = 'Linux',
+		final = function(code)
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = replace_bits_types_builtin(code, 'pid_t')
+			return code
+		end,
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
 	return inc
@@ -206,11 +252,6 @@ includeList:append(table{
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
-		return code
-	end},
-
-	{inc='<linux/limits.h>', out='c/linux/limits.lua', final=function(code)
-		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
 		return code
 	end},
 
@@ -311,29 +352,6 @@ end
 		return code
 	end},
 
-	-- depends: features.h stddef.h bits/libc-header-start.h
-	{inc='<string.h>', out='c/string.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
-		return code
-	end},
-
-	-- depends: features.h stddef.h bits/types.h and too many really
-	-- this and any other file that requires stddef might have these lines which will have to be removed:
-	-- Windows/Linux split file
-	{
-		inc = '<time.h>',
-		out = 'Linux/c/time.lua',
-		os = 'Linux',
-		final = function(code)
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = replace_bits_types_builtin(code, 'pid_t')
-			return code
-		end,
-	},
-
 	-- depends on too much
 	{inc='<stdarg.h>', out='c/stdarg.lua', final=function(code)
 		-- stdio.h and stdarg.h both define this
@@ -385,21 +403,6 @@ return setmetatable({}, {
 
 
 -- requires manual manipulation:
-
-
-	-- depends: features.h
-	-- this is here for require() insertion but cannot be used for generation
-	-- it must be manually created
-	--
-	-- they run into the "never include this file directly" preproc error
-	-- so you'll have to manually cut out the generated macros from another file
-	--  and insert the code into a file in the results folder
-	-- also anything that includes this will have the line before it:
-	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
-	-- and that will have to be removed
-	{dontGen=true, inc='<bits/libc-header-start.h>', out='c/bits/libc-header-start.lua', final=function(code)
-		return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-	end},
 
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually extracted from c/setjmp.lua

@@ -315,6 +315,45 @@ typedef intptr_t ssize_t;
 			} do
 				code = removeStaticFunction(code, f)
 			end
+			
+			-- corecrt_wio.h #define's types that I need, so typedef them here instead
+			-- TODO pick according to the current macros
+			-- but make_all.lua and generate.lua run in  separate processes, so ....
+			code = code:gsub('enum { _wfinddata_t = 0 };', '')
+			code = code:gsub('enum { _wfinddatai64_t = 0 };', '')
+			code = code .. [=[
+ffi.cdef[[
+/* #ifdef _USE_32BIT_TIME_T
+	typedef _wfinddata32_t _wfinddata_t;
+	typedef _wfinddata32i64_t _wfinddatai64_t;
+#else */
+	typedef struct _wfinddata64i32_t _wfinddata_t;
+	typedef struct _wfinddata64_t _wfinddatai64_t;
+/* #endif */
+]]
+
+local lib = ffi.C
+return setmetatable({
+--[[
+#ifdef _USE_32BIT_TIME_T
+	_wfindfirst = lib._wfindfirst32,
+	_wfindnext = lib._wfindnext32,
+	_wfindfirsti64 = lib._wfindfirst32i64,
+	_wfindnexti64 = lib._wfindnext32i64,
+#else
+--]] 
+	_wfindfirst = lib._wfindfirst64i32,
+	_wfindnext = lib._wfindnext64i32,
+	_wfindfirsti64 = lib._wfindfirst64,
+	_wfindnexti64 = lib._wfindnext64,
+--[[
+#endif
+--]]
+}, {
+	__index = ffi.C,
+})
+
+]=]
 			return code
 		end,
 	},

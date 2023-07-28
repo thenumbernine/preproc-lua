@@ -597,10 +597,13 @@ return setmetatable({
 	-- ... could windows play ball and let utime.h redirect to sys/utime.h?
 	-- ... nope. just sys/utime.h
 	-- so let me check posix for sys/utime.h, if it doesn't exist then maybe I'll consider renaming this to utime.h instead of sys/utime.h
+	-- nope it doesn't
+	-- so instead I think I'll have ffi.c.utime and ffi.c.sys.utime point to windows' ffi.windows.c.sys.utime or linux' ffi.linux.c.utime
 	{
 		inc = '<sys/utime.h>',
 		out = 'Windows/c/sys/utime.lua',
 		forceSplit = true,
+		-- TODO custom split file that redirects to Windows -> sys.utime, Linux -> utime
 		final = function(code)
 			for _,f in ipairs{
 				'_utime',
@@ -610,6 +613,19 @@ return setmetatable({
 			} do
 				code = removeStaticFunction(code, f)
 			end
+			code = code .. [=[
+local lib = ffi.C
+return setmetatable(
+ffi.arch == 'x86' and {
+	utime = lib._utime32,
+	struct_utimbuf = 'struct __utimbuf32',
+} or {
+	utime = lib._utime64,
+	struct_utimbuf = 'struct __utimbuf64'
+}, {
+	__index = lib,
+})
+]=]
 			return code
 		end,
 	},
@@ -744,6 +760,16 @@ return setmetatable({
 		inc = '<utime.h>',
 		out = 'Linux/c/utime.lua',
 		forceSplit = true,
+		final = function(code)
+			code = code .. [[
+return setmetatable({
+	struct_utimbuf = 'struct utimbuf',
+}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
 	},
 
 	-- depends: bits/types.h etc

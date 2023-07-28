@@ -446,13 +446,70 @@ return setmetatable({
 		inc = '<sys/stat.h>',
 		out = 'Windows/c/sys/stat.lua',
 		final = function(code)
+			-- remove the #define-as-typedef produced enums...
+			for _,f in ipairs{
+				'__stat64',
+				'_fstat',
+				'_fstati64',
+				'_stat',
+				'_stati64',
+				'_wstat',
+				'_wstati64',
+			} do
+				code = code:gsub('enum { '..f..' = 0 };', '')
+			end
 			-- windows help says "always include sys/types.h first"
 			-- ... smh why couldn't they just include it themselves?
 			code = [[
 require 'ffi.c.sys.types'
 ]] .. code
+			code = code .. [=[
+ffi.cdef[[
+typedef struct _stat64 __stat64;
+]]
+
+local lib = ffi.C
+return setmetatable({
+--[[
+#ifdef _USE_32BIT_TIME_T
+	_fstat = lib._fstat32,
+	_fstati64 = lib._fstat32i64,
+	_stat = lib._stat32,
+	_stati64 = lib._stat32i64,
+	_wstat = lib._wstat32,
+	_wstati64 = lib._wstat32i64,
+#else
+--]]
+	_fstat = lib._fstat64i32,
+	_fstati64 = lib._fstat64,
+	_stat = lib._stat64i32,
+	_stati64 = lib._stat64,
+	_wstat = lib._wstat64i32,
+	_wstati64 = lib._wstat64,
+--[[
+#endif
+--]]
+}, {
+	__index = ffi.C,
+})
+]=]
 			return code
 		end,
+	},
+
+	-- windows says ...
+	-- _utime, _utime32, _utime64 is in sys/utime.h
+	-- _wutime is in utime.h or wchar.h (everything is in wchar.h ...)
+	-- posix says ...
+	-- utime is in utime.h
+	-- utimes is in sys/time.h
+	-- ... could windows play ball and let utime.h redirect to sys/utime.h?
+	-- ... nope. just sys/utime.h
+	-- so let me check posix for sys/utime.h, if it doesn't exist then maybe I'll consider renaming this to utime.h instead of sys/utime.h
+	{
+		inc = '<sys/utime.h>',
+		out = 'Windows/c/sys/utime.lua',
+		forceSplit = true,
 	},
 
 }:mapi(function(inc)

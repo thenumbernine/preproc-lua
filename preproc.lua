@@ -1153,7 +1153,17 @@ function Preproc:__call(args)
 						end
 					end
 				end
---print('eval is', eval, 'line is', l)
+
+				local preveval = true
+				if #ifstack > 0 then
+					for i=1,#ifstack-1 do
+						if ifstack[i][1] == false then
+							preveval = false
+							break
+						end
+					end
+				end
+--print('line is', l, 'eval is', eval, 'preveval is', preveval)
 
 				l = string.trim(l)	-- trailing space doesn't matter, right?
 				if l:sub(1,1) == '#' then
@@ -1204,13 +1214,13 @@ function Preproc:__call(args)
 									v = ''
 									assert(k ~= '', "couldn't find what you were defining: "..l)
 									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
-	--print('defining empty',k,v)
+--print('defining empty',k,v)
 								end
 								
 								--TODO lines[i] = ...
 								-- and then incorporate the enim {} into the code
 								lines[i] = self:getDefineCode(k, v, l)
-	--print('line is', l)
+--print('line is', l)
 							end
 						else
 							lines:remove(i)
@@ -1219,13 +1229,16 @@ function Preproc:__call(args)
 					elseif cmd == 'if'
 					or cmd == 'elif'
 					then
+--print('if/elif with eval', eval, 'preveval', preveval)
 						local hasprocessed = false
 						if cmd == 'elif' then
+--print('closing via elif, #ifstack', require'ext.tolua'(ifstack))
 							local oldcond = ifstack:last()
 							hasprocessed = oldcond[1] or oldcond[2]
 							closeIf()
 						end
 
+--print('hasprocessed', hasprocessed)
 						local cond
 						if cmd == 'elif'
 						and hasprocessed
@@ -1235,14 +1248,21 @@ function Preproc:__call(args)
 							-- only parse the condition if we're evaluating this #if block
 							-- otherwise the cond could have macros that aren't defined yet
 							-- if we just give the cond a false value it won't matter -- the whole block is being skipped anyways
-							if not eval then
+							-- NOTICE
+							-- 'eval' is the previous #if/#elif 's evaluation
+							-- because it was evaluated before the #elif, for #elif it'll include the latest #if's cond as well
+							-- 'preveval' is the wrapping block's eval
+							if (cmd == 'elif' and not preveval)
+							or (cmd == 'if' and not eval)
+							then
+--print('elif skipping cond evaluation')
 								cond = false
 							else
 								cond = self:parseCondExpr(rest)
 								assert(cond ~= nil, "cond must be true or false")
 							end
 						end
-	--print('got cond', cond, 'from', rest)
+--print('got cond', cond, 'from', rest)
 						ifstack:insert{cond, hasprocessed}
 						
 						lines:remove(i)
@@ -1256,19 +1276,19 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'ifdef' then
-	--print('ifdef looking for '..rest)
+--print('ifdef looking for '..rest)
 						assert(isvalidsymbol(rest))
 						local cond = not not self.macros[rest]
-	--print('got cond', cond)
+--print('got cond', cond)
 						ifstack:insert{cond, false}
 						
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'ifndef' then
-	--print('ifndef looking for', rest)
+--print('ifndef looking for', rest)
 						assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
 						local cond = not self.macros[rest]
-	--print('got cond', cond)
+--print('got cond', cond)
 						ifstack:insert{cond, false}
 						
 						lines:remove(i)
@@ -1379,19 +1399,19 @@ function Preproc:__call(args)
 							end
 						
 							local search = fn
-	--print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
+--print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
 							-- search through the include stack for the most recent file with the name of what we're looking for ...
 							local foundPrevIncludeDir
 							for i=#self.includeStack,1,-1 do
 								local includeNextFile = self.includeStack[i]
 								local dir, prevfn = path(includeNextFile):getdir()
-	--print(includeNextFile, dir, prevfn)
+--print(includeNextFile, dir, prevfn)
 								if prevfn == fn then
 									foundPrevIncludeDir = dir
 									break
 								end
 							end
-	--print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
+--print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
 							-- and if we didn't find it, just use nil, and searchForInclude will do a regular search and get the first option
 							fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
 							
@@ -1408,7 +1428,7 @@ function Preproc:__call(args)
 								error("couldn't find include file "..search..'\n')
 							end
 							if not self.alreadyIncludedFiles[fn] then
-	--print('include_next '..fn)
+--print('include_next '..fn)
 								lines:insert(i, '/* END   '..fn..' */')
 								-- at position i, insert the file
 								local newcode = assert(path(fn):read(), "couldn't find file "..fn)
@@ -1494,9 +1514,9 @@ function Preproc:__call(args)
 						end
 
 						if origl ~= nl then
-	--print('line was', l)
+--print('line was', l)
 							lines[i] = nl
-	--print('line is', l)
+--print('line is', l)
 						end
 						if self.foundIncompleteMacroLine then
 							lines:remove(i)

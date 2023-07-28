@@ -89,14 +89,24 @@ local function fixEnumsAndDefineMacrosInterleaved(code)
 	return lines:concat'\n'
 end
 
+-- ok with {.-} it fails on funcntions that have {}'s in their body, like wmemset
+-- so lets try %b{}
+-- TODO name might have a * before it instead of a space...
 local function removeStaticFunction(code, name)
-	-- TODO count {}'s of func body
-	-- TODO name might have a * before it instead of a space...
-	return code:gsub('static%s[^(]-%s'..name..'%s*%(.-%)%s*{.-}', '')
+	return code:gsub('static%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
 end
 
+local function removeInlineFunction(code, name)
+	return code:gsub('__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
+end
+
+local function removeDeclSpecNoInlineFunction(code, name)
+	return code:gsub('__declspec%(noinline%)%s*__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
+end
+
+
 local includeList = table()
-		
+
 -- files found in multiple OS's will go in [os]/[path]
 -- and then in just [path] will be a file that determines the file based on os (and arch?)
 
@@ -109,7 +119,7 @@ includeList:append(table{
 
 -- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
 	{inc='<stddef.h>', out='Windows/c/stddef.lua'},
-	
+
 	{
 		inc = '<time.h>',
 		out = 'Windows/c/time.lua',
@@ -166,8 +176,137 @@ typedef intptr_t ssize_t;
 		out = 'Windows/c/string.lua',
 		-- TODO final() that outputs a wrapper that replaces calls to all the default POSIX functions with instead calls to the alternative safe ones
 		final = function(code)
-			-- in a perfect world this will just remove the _wcstok inline function
 			code = removeStaticFunction(code, '_wcstok')
+			return code
+		end,
+	},
+
+	{
+		inc = '<wchar.h>',
+		out = 'Windows/c/wchar.lua',
+		-- split for this as well, tho how to automate ..
+		-- tempted to make splits for everything or something
+		-- or even my own package.loader ...
+		forceSplit = true,
+		final = function(code)
+			code = removeDeclSpecNoInlineFunction(code, '__local_stdio_printf_options')
+			code = removeDeclSpecNoInlineFunction(code, '__local_stdio_scanf_options')
+			for _,f in ipairs{
+				'_vcwprintf_l',
+				'_vcwprintf',
+				'_vcwprintf_s_l',
+				'_vcwprintf_s',
+				'_vcwprintf_p_l',
+				'_vcwprintf_p',
+				'_cwprintf_l',
+				'_cwprintf',
+				'_cwprintf_s_l',
+				'_cwprintf_s',
+				'_cwprintf_p_l',
+				'_cwprintf_p',
+				'_vcwscanf_l',
+				'_vcwscanf',
+				'_vcwscanf_s_l',
+				'_vcwscanf_s',
+				'_cwscanf_l',
+				'_cwscanf',
+				'_cwscanf_s_l',
+				'_cwscanf_s',
+				'_vfwprintf_l',
+				'vfwprintf',
+				'_vfwprintf_s_l',
+				'_vfwprintf_p_l',
+				'_vfwprintf_p',
+				'_vwprintf_l',
+				'vwprintf',
+				'_vwprintf_s_l',
+				'_vwprintf_p_l',
+				'_vwprintf_p',
+				'_fwprintf_l',
+				'fwprintf',
+				'_fwprintf_s_l',
+				'_fwprintf_p_l',
+				'_fwprintf_p',
+				'_wprintf_l',
+				'wprintf',
+				'_wprintf_s_l',
+				'_wprintf_p_l',
+				'_wprintf_p',
+				'_vfwscanf_l',
+				'vfwscanf',
+				'_vfwscanf_s_l',
+				'_vwscanf_l',
+				'vwscanf',
+				'_vwscanf_s_l',
+				'_fwscanf_l',
+				'fwscanf',
+				'_fwscanf_s_l',
+				'_wscanf_l',
+				'wscanf',
+				'_wscanf_s_l',
+				'_vsnwprintf_l',
+				'_vsnwprintf_s_l',
+				'_vsnwprintf_s',
+				'_vsnwprintf',
+				'_vswprintf_c_l',
+				'_vswprintf_c',
+				'_vswprintf_l',
+				'__vswprintf_l',
+				'_vswprintf',
+				'vswprintf',
+				'_vswprintf_s_l',
+				'_vswprintf_p_l',
+				'_vswprintf_p',
+				'_vscwprintf_l',
+				'_vscwprintf',
+				'_vscwprintf_p_l',
+				'_vscwprintf_p',
+				'__swprintf_l',
+				'_swprintf_l',
+				'_swprintf',
+				'swprintf',
+				'_swprintf_s_l',
+				'_swprintf_p_l',
+				'_swprintf_p',
+				'_swprintf_c_l',
+				'_swprintf_c',
+				'_snwprintf_l',
+				'_snwprintf',
+				'_snwprintf_s_l',
+				'_snwprintf_s',
+				'_scwprintf_l',
+				'_scwprintf',
+				'_scwprintf_p_l',
+				'_scwprintf_p',
+				'_vswscanf_l',
+				'vswscanf',
+				'_vswscanf_s_l',
+				'_vsnwscanf_l',
+				'_vsnwscanf_s_l',
+				'_swscanf_l',
+				'swscanf',
+				'_swscanf_s_l',
+				'_snwscanf_l',
+				'_snwscanf',
+				'_snwscanf_s_l',
+				'_snwscanf_s',
+				'fwide',
+				'mbsinit',
+				'wmemchr',
+				'wmemcmp',
+				'wmemcpy',
+				'wmemmove',
+				'wmemset',
+			} do
+				code = removeInlineFunction(code, f)
+			end
+			for _,f in ipairs{
+				'_wcstok',
+				'_wctime',
+				'_wctime_s',
+			} do
+				code = removeStaticFunction(code, f)
+			end
 			return code
 		end,
 	},
@@ -1062,7 +1201,11 @@ end
 for incname, det in pairs(detectDups) do
 	if type(det) == 'table' then
 		local keys = table.keys(det)
-		if #keys > 1 then
+		-- if we had more than 1 key
+		if #keys > 1
+		-- or if any had 'forceSplit' set
+		or table(table.map(det, function(v,k,t) return v, #t+1 end):unpack()).forceSplit
+		then
 			local base
 			for os,inc in pairs(det) do
 				assert(inc.os, "have a split file and one entry doesn't have an os... "..tolua(inc))

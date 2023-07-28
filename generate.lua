@@ -203,6 +203,10 @@ if ffi.os == 'Windows' then
 #define __CRTDECL __CLRCALL_PURE_OR_CDECL
 #define _CRT_DEPRECATE_TEXT(_Text)
 
+// in corecrt.h but can be overridden
+// hopefully this will help:
+//#define _CRT_FUNCTIONS_REQUIRED 0
+
 // correct me if I'm wrong but this macro says no inlines?
 //#define __midl
 // hmm, nope, it just disabled everything
@@ -215,7 +219,7 @@ if ffi.os == 'Windows' then
 ]]
 
 
-	-- <sal.h> has these:  (included by <vcruntime.h>)
+	-- [=[ <sal.h> has these:  (included by <vcruntime.h>)
 	for l in io.lines[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\include\sal.h]] do
 		local rest = l:match'^#define%s+(.*)$'
 		if rest then
@@ -230,6 +234,7 @@ if ffi.os == 'Windows' then
 			end
 		end
 	end
+	--]=]
 
 	skipfiles:insert'<vcruntime.h>'
 	skipfiles:insert'<vcruntime_string.h>'

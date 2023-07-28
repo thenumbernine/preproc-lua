@@ -172,6 +172,12 @@ typedef intptr_t ssize_t;
 	},
 
 	{
+		inc = '<errno.h>',
+		out = 'Windows/c/errno.lua',
+	},
+
+	-- depends on: errno.h corecrt_wstring.h
+	{
 		inc = '<string.h>',
 		out = 'Windows/c/string.lua',
 		-- TODO final() that outputs a wrapper that replaces calls to all the default POSIX functions with instead calls to the alternative safe ones
@@ -181,6 +187,7 @@ typedef intptr_t ssize_t;
 		end,
 	},
 
+	-- depends on: errno.h corecrt_wstring.h
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',
@@ -419,6 +426,25 @@ includeList:append(table{
 		end,
 	},
 
+	-- depends on features.h
+	{
+		inc = '<errno.h>',
+		out = 'Linux/c/errno.lua',
+		final = function(code)
+			-- manually add the 'errno' macro at the end:
+			code = code .. [[
+return setmetatable({
+	errno = function()
+		return ffi.C.__errno_location()[0]
+	end,
+}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
 	return inc
@@ -459,21 +485,6 @@ includeList:append(table{
 
 	-- depends: features.h, bits/types/__sigset_t.h
 	{inc='<setjmp.h>', out='c/setjmp.lua'},
-
-	-- depends on features.h
-	{inc='<errno.h>', out='c/errno.lua', final=function(code)
-		-- manually add the 'errno' macro at the end:
-		code = code .. [[
-return setmetatable({
-	errno = function()
-		return ffi.C.__errno_location()[0]
-	end,
-}, {
-	__index = ffi.C,
-})
-]]
-		return code
-	end},
 
 	-- depends: features.h bits/types.h
 	{inc='<unistd.h>', out='c/unistd.lua', final=function(code)
@@ -1224,6 +1235,7 @@ for incname, det in pairs(detectDups) do
 				inc = incname,
 				out = base,
 				-- TODO this assumes it is Windows vs all, and 'all' is stored in Linux ...
+				-- TODO autogen by keys.  non-all <-> if os == $key, all <-> else, no 'all' present <-> else error "idk your os" unless you wanna have Linux the default 
 				forcecode = template([[
 local ffi = require 'ffi'
 if ffi.os == 'Windows' then

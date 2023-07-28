@@ -510,6 +510,17 @@ return setmetatable({
 		inc = '<sys/utime.h>',
 		out = 'Windows/c/sys/utime.lua',
 		forceSplit = true,
+		final = function(code)
+			for _,f in ipairs{
+				'_utime',
+				'_futime',
+				'_wutime',
+				'utime',
+			} do
+				code = removeStaticFunction(code, f)
+			end
+			return code
+		end,
 	},
 
 }:mapi(function(inc)

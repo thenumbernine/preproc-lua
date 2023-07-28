@@ -696,6 +696,10 @@ includeList:append(table{
 
 	-- depends: features.h bits/types.h sys/select.h
 	{inc='<sys/types.h>', out='Linux/c/sys/types.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'dev_t')
+		code = replace_bits_types_builtin(code, 'ino_t')
+		code = replace_bits_types_builtin(code, 'mode_t')
+		code = replace_bits_types_builtin(code, 'nlink_t')
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
@@ -783,6 +787,10 @@ return setmetatable({
 
 	-- depends: bits/types.h etc
 	{inc='<sys/stat.h>', out='Linux/c/sys/stat.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'dev_t')
+		code = replace_bits_types_builtin(code, 'ino_t')
+		code = replace_bits_types_builtin(code, 'mode_t')
+		code = replace_bits_types_builtin(code, 'nlink_t')
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')

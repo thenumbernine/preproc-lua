@@ -119,6 +119,8 @@ includeList:append(table{
 
 	{inc='<corecrt_share.h>', out='Windows/c/corecrt_share.lua'},
 
+	{inc='<corecrt_wdirect.h>', out='Windows/c/corecrt_wdirect.lua'},
+
 	-- uses corecrt_share.h
 	{
 		inc = '<corecrt_wio.h>',
@@ -249,7 +251,7 @@ return setmetatable({
 		end,
 	},
 
-	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h
+	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h, corecrt_wdirect.h
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',
@@ -414,6 +416,15 @@ return setmetatable({
 ]=]
 			return code
 		end,
+	},
+
+	-- depends: corecrt_wdirect.h
+	-- was a Windows programmer trying to type "dirent.h" and got mixed up?
+	-- looks like a few of these functions are usually in POSIX unistd.h
+	{
+		inc = '<direct.h>',
+		out = 'Windows/c/direct.lua',
+		forceSplit = true,
 	},
 
 }:mapi(function(inc)

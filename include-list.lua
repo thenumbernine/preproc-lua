@@ -121,6 +121,10 @@ includeList:append(table{
 
 	{inc='<corecrt_wdirect.h>', out='Windows/c/corecrt_wdirect.lua'},
 
+	{inc='<corecrt_wstdio.h>', out='Windows/c/corecrt_wstdio.lua'},
+
+	{inc='<corecrt_stdio_config.h>', out='Windows/c/corecrt_stdio_config.lua'},
+
 	-- uses corecrt_share.h
 	{
 		inc = '<corecrt_wio.h>',
@@ -251,7 +255,7 @@ return setmetatable({
 		end,
 	},
 
-	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h, corecrt_wdirect.h
+	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h, corecrt_wdirect.h, corecrt_stdio_config.h
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',
@@ -427,6 +431,12 @@ return setmetatable({
 		forceSplit = true,
 	},
 
+	-- depends: corecrt_stdio_config.h
+	{
+		inc = '<stdio.h>',
+		out = 'Windows/c/stdio.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
@@ -554,6 +564,33 @@ return setmetatable({
 		end,
 	},
 
+	-- put newly inserted entries here
+
+	-- depends on too much
+	-- moving to Linux-only block since now it is ...
+	-- it used to be just after stdarg.h ...
+	-- maybe I have to move everything up to that file into the Linux-only block too ...
+	{
+		inc = '<stdio.h>',
+		out = 'Linux/c/stdio.lua',
+		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			code = replace_bits_types_builtin(code, 'off_t')
+			code = replace_bits_types_builtin(code, 'ssize_t')
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
+			code = remove_VA_LIST_DEFINED(code)
+			code = replace_va_list_require(code)
+			-- this all stems from #define stdin stdin etc
+			-- which itself is just for C99/C89 compat
+			code = commentOutLine(code, 'enum { stdin = 0 };')
+			code = commentOutLine(code, 'enum { stdout = 0 };')
+			code = commentOutLine(code, 'enum { stderr = 0 };')
+			return code
+		end,
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
 	return inc
@@ -669,24 +706,6 @@ return setmetatable({}, {
 	__index = ffi.C,
 })
 ]]
-		return code
-	end},
-
-	-- depends on too much
-	{inc='<stdio.h>',	out='c/stdio.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = replace_bits_types_builtin(code, 'off_t')
-		code = replace_bits_types_builtin(code, 'ssize_t')
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
-		code = remove_need_macro(code, '__va_list')
-		code = remove_VA_LIST_DEFINED(code)
-		code = replace_va_list_require(code)
-		-- this all stems from #define stdin stdin etc
-		-- which itself is just for C99/C89 compat
-		code = commentOutLine(code, 'enum { stdin = 0 };')
-		code = commentOutLine(code, 'enum { stdout = 0 };')
-		code = commentOutLine(code, 'enum { stderr = 0 };')
 		return code
 	end},
 

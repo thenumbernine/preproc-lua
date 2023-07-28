@@ -48,6 +48,15 @@ local function replace_va_list_require(code)
 	return code
 end
 
+-- unistd.h and stdio.h both define SEEK_*, so ...
+local function replace_SEEK(code)
+		return code:gsub([[
+enum { SEEK_SET = 0 };
+enum { SEEK_CUR = 1 };
+enum { SEEK_END = 2 };
+]], "]] require 'ffi.c.bits.types.SEEK' ffi.cdef[[\n")
+end
+
 -- TODO keeping warnings as comments seems nice
 --  but they insert at the first line
 --  which runs the risk of bumping the first line skip of BEGIN ...
@@ -798,11 +807,22 @@ return setmetatable({
 			code = remove_need_macro(code, '__va_list')
 			code = remove_VA_LIST_DEFINED(code)
 			code = replace_va_list_require(code)
+			-- this is in stdio.h and unistd.h
+			code = replace_SEEK(code)
 			-- this all stems from #define stdin stdin etc
 			-- which itself is just for C99/C89 compat
 			code = commentOutLine(code, 'enum { stdin = 0 };')
 			code = commentOutLine(code, 'enum { stdout = 0 };')
 			code = commentOutLine(code, 'enum { stderr = 0 };')
+			-- for fopen overloading
+			code = code .. [[
+-- special case since in the browser app where I'm capturing fopen for remote requests and caching
+-- feel free to not use the returend table and just use ffi.C for faster access
+-- but know you'll be losing compatability with browser
+return setmetatable({}, {
+	__index = ffi.C,
+})
+]]
 			return code
 		end,
 	},
@@ -849,6 +869,11 @@ includeList:append(table{
 		code = replace_bits_types_builtin(code, 'ssize_t')
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
+
+		-- both unistd.h and stdio.h have SEEK_* defined, so ...
+		-- you'll have to manually create this file
+		code = replace_SEEK(code)
+
 		code = code:gsub(
 			-- TODO i'm sure this dir will change in the future ...
 			string.patescape('/* BEGIN /usr/include/x86_64-linux-gnu/bits/confname.h */')
@@ -860,22 +885,18 @@ includeList:append(table{
 ]]
 		)
 		code = code .. [[
-
 -- I can't change ffi.C.getcwd to ffi.C._getcwd in the case of Windows
--- but I can at least return a table that changes names depending on the OS:
--- TODO do the __index trick, and split this file between Windows and Linux ?
-
-if ffi.os == 'Windows' then
-	return {
-		chdir = ffi.C._chdir,
-		getcwd = ffi.C._getcwd,
+local lib = ffi.C
+return setmetatable(
+	ffi.os == 'Windows' and {
+		chdir = lib._chdir,
+		getcwd = lib._getcwd,
+		rmdir = lib._rmdir,
+	} or {},
+	{
+		__index = lib,
 	}
-else
-	return {
-		chdir = ffi.C.chdir,
-		getcwd = ffi.C.getcwd,
-	}
-end
+)
 ]]
 		return code
 	end},
@@ -905,15 +926,6 @@ end
 		-- so maybe I should put it in its own manual file?
 		code = remove_VA_LIST_DEFINED(code)
 		code = replace_va_list_require(code)
-		-- for fopen overloading
-		code = code .. [[
--- special case since in the browser app where I'm capturing fopen for remote requests and caching
--- feel free to not use the returend table and just use ffi.C for faster access
--- but know you'll be losing compatability with browser
-return setmetatable({}, {
-	__index = ffi.C,
-})
-]]
 		return code
 	end},
 

@@ -109,6 +109,23 @@ includeList:append(table{
 
 	-- Windows/Linux split file
 	{inc='<time.h>', out='Windows/c/time.lua'},
+
+	-- this isn't in Windows at all I guess, but for cross-platform's sake, I'll put in some common POSIX defs I need
+	{
+		inc = '<sys/types.h>',
+		out = 'Windows/c/sys/types.lua',
+		-- gcc x64 defines ssize_t = __ssize_t, __ssize_t = long int
+		-- I'm guessing in gcc 'long int' is 8 bytes
+		-- msvc x64 'long int' is just 4 bytes ...
+		-- TODO proly arch-specific too
+		forcecode = [=[
+local ffi = require 'ffi'
+ffi.cdef[[
+typedef intptr_t ssize_t;
+]]
+]=],
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
@@ -165,6 +182,17 @@ includeList:append(table{
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
 	{inc='<sys/termios.h>', out='c/sys/termios.lua'},
 
+	-- depends: features.h bits/types.h sys/select.h
+	{inc='<sys/types.h>', out='Linux/c/sys/types.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'gid_t')
+		code = replace_bits_types_builtin(code, 'uid_t')
+		code = replace_bits_types_builtin(code, 'off_t')
+		code = replace_bits_types_builtin(code, 'pid_t')
+		code = replace_bits_types_builtin(code, 'ssize_t')
+		code = remove_need_macro(code, 'size_t')
+		return code
+	end},
+
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
 	return inc
@@ -178,17 +206,6 @@ includeList:append(table{
 		code = replace_bits_types_builtin(code, 'gid_t')
 		code = replace_bits_types_builtin(code, 'uid_t')
 		code = replace_bits_types_builtin(code, 'off_t')
-		return code
-	end},
-
-	-- depends: features.h bits/types.h sys/select.h
-	{inc='<sys/types.h>', out='c/sys/types.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'gid_t')
-		code = replace_bits_types_builtin(code, 'uid_t')
-		code = replace_bits_types_builtin(code, 'off_t')
-		code = replace_bits_types_builtin(code, 'pid_t')
-		code = replace_bits_types_builtin(code, 'ssize_t')
-		code = remove_need_macro(code, 'size_t')
 		return code
 	end},
 

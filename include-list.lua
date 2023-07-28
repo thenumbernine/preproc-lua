@@ -887,16 +887,18 @@ includeList:append(table{
 		code = code .. [[
 -- I can't change ffi.C.getcwd to ffi.C._getcwd in the case of Windows
 local lib = ffi.C
-return setmetatable(
-	ffi.os == 'Windows' and {
+if ffi.os == 'Windows' then
+	require 'ffi.c.direct'	-- get our windows defs
+	return setmetatable({
 		chdir = lib._chdir,
 		getcwd = lib._getcwd,
 		rmdir = lib._rmdir,
-	} or {},
-	{
+	}, {
 		__index = lib,
-	}
-)
+	})
+else
+	return lib
+end
 ]]
 		return code
 	end},

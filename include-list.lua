@@ -622,7 +622,6 @@ includeList:append(table{
 	{
 		inc = '<time.h>',
 		out = 'Linux/c/time.lua',
-		os = 'Linux',
 		final = function(code)
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')
@@ -648,6 +647,12 @@ return setmetatable({
 ]]
 			return code
 		end,
+	},
+
+	{
+		inc = '<utime.h>',
+		out = 'Linux/c/utime.lua',
+		forceSplit = true,
 	},
 
 	-- depends: bits/types.h etc

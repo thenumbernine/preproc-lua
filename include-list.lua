@@ -89,12 +89,19 @@ local function fixEnumsAndDefineMacrosInterleaved(code)
 	return lines:concat'\n'
 end
 
+local function removeStaticFunction(code, name)
+	-- TODO count {}'s of func body
+	-- TODO name might have a * before it instead of a space...
+	return code:gsub('static%s[^(]-%s'..name..'%s*%(.-%)%s*{.-}', '')
+end
+
 local includeList = table()
 		
 -- files found in multiple OS's will go in [os]/[path]
 -- and then in just [path] will be a file that determines the file based on os (and arch?)
 
 -- [====[ Begin Windows-specific:
+-- TODO this is most likely going to be come Windows/x64/ files in the future
 includeList:append(table{
 
 -- Windows-only:
@@ -102,7 +109,41 @@ includeList:append(table{
 
 -- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
 	{inc='<stddef.h>', out='Windows/c/stddef.lua'},
-	{inc='<time.h>', out='Windows/c/time.lua'},
+	
+	{
+		inc = '<time.h>',
+		out = 'Windows/c/time.lua',
+		final = function(code)
+			code = removeStaticFunction(code, '_wctime')
+			code = removeStaticFunction(code, '_wctime_s')
+			code = removeStaticFunction(code, 'ctime')
+			code = removeStaticFunction(code, 'difftime')
+			code = removeStaticFunction(code, 'gmtime')
+			code = removeStaticFunction(code, 'localtime')
+			code = removeStaticFunction(code, '_mkgmtime')
+			code = removeStaticFunction(code, 'mktime')
+			code = removeStaticFunction(code, 'time')
+			code = removeStaticFunction(code, 'timespec_get')
+			-- add these static inline wrappers as lua wrappers
+			code = code .. [[
+return setmetatable({
+	_wctime = ffi.C._wctime64,
+	_wctime_s = ffi.C._wctime64_s,
+	ctime = _ctime64,
+	difftime = _difftime64,
+	gmtime = _gmtime64,
+	localtime = _localtime64,
+	_mkgmtime = _mkgmtime64,
+	mktime = _mktime64,
+	time = _time64,
+	timespec_get = _timespec_get64,
+}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
+	},
 
 	-- this isn't in Windows at all I guess, but for cross-platform's sake, I'll put in some common POSIX defs I need
 	{
@@ -126,7 +167,7 @@ typedef intptr_t ssize_t;
 		-- TODO final() that outputs a wrapper that replaces calls to all the default POSIX functions with instead calls to the alternative safe ones
 		final = function(code)
 			-- in a perfect world this will just remove the _wcstok inline function
-			code = code:gsub(string.patescape('static __inline wchar_t* __cdecl _wcstok')..'%(.-%) {.-}', '')
+			code = removeStaticFunction(code, '_wcstok')
 			return code
 		end,
 	},

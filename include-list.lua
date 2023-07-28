@@ -522,7 +522,12 @@ return setmetatable({
 			end
 			-- return ffi.C so it has the same return behavior as Linux/c/stdio
 			code = code .. [[
-return ffi.C
+local lib = ffi.C
+return setmetatable({
+	fileno = lib._fileno,
+}, {
+	__index = ffi.C,
+})
 ]]
 		end,
 	},

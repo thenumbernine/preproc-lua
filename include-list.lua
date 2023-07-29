@@ -1508,10 +1508,13 @@ return require 'ffi.load' 'SDL2'
 		end,
 	},
 
+	-- 'forceSplit' on all 3rd party
 	{
 		inc = '<ogg/ogg.h>',
 		out = 'ogg/ogg.lua',
+		forceSplit = true,
 	},
+	
 	{
 		inc = '<vorbis/codec.h>',
 		out = 'vorbis/codec.lua',

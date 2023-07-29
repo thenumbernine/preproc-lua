@@ -1508,10 +1508,10 @@ return require 'ffi.load' 'SDL2'
 		end,
 	},
 
-	-- 'forceSplit' on all 3rd party
+	-- TODO 'forceSplit' on all 3rd party libs
 	{
 		inc = '<ogg/ogg.h>',
-		out = 'ogg/ogg.lua',
+		out = 'ogg.lua',
 		forceSplit = true,
 	},
 	

@@ -671,6 +671,16 @@ ffi.arch == 'x86' and {
 		end,
 	},
 
+	-- unless I enable _VCRT_COMPILER_PREPROCESSOR , this file is empty
+	-- maybe it shows up elsewhere?
+	-- hmm but if I do, my preproc misses almost all the number defs
+	-- becaus they use suffixes i8, i16, i32, i64, ui8, ui16, ui32, ui64
+	-- but the types it added ... int8_t ... etc ... are alrady buitin to luajit?
+	{
+		inc = '<stdint.h>',
+		out = 'Windows/c/stdint.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
@@ -837,6 +847,19 @@ return setmetatable({
 		return code
 	end},
 
+	-- depends: bits/types.h
+	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(path'results/c/stdint.lua':read()))()" will give an error:
+	--  `attempt to redefine 'WCHAR_MIN' at line 75
+	-- because lua.ext already defined it
+	{
+		inc = '<stdint.h>',
+		out = 'Linux/c/stdint.lua',
+		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			return code
+		end,
+	},
+
 	-- put newly inserted entries here
 
 	-- depends on too much
@@ -966,15 +989,6 @@ return ffi.C
 		code = replace_bits_types_builtin(code, 'pid_t')
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
-		return code
-	end},
-
-	-- depends: bits/types.h
-	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(path'results/c/stdint.lua':read()))()" will give an error:
-	--  `attempt to redefine 'WCHAR_MIN' at line 75
-	-- because lua.ext already defined it
-	{inc='<stdint.h>',	out='c/stdint.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		return code
 	end},
 

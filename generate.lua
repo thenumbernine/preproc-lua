@@ -207,6 +207,9 @@ if ffi.os == 'Windows' then
 // hopefully this will help:
 //#define _CRT_FUNCTIONS_REQUIRED 0
 
+// needed for stdint.h ... ?
+//#define _VCRT_COMPILER_PREPROCESSOR 1
+
 // correct me if I'm wrong but this macro says no inlines?
 //#define __midl
 // hmm, nope, it just disabled everything

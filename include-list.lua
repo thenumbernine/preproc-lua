@@ -760,15 +760,19 @@ includeList:append(table{
 
 	-- depends: features.h bits/types.h sys/select.h
 	{inc='<sys/types.h>', out='Linux/c/sys/types.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'dev_t')
-		code = replace_bits_types_builtin(code, 'ino_t')
-		code = replace_bits_types_builtin(code, 'mode_t')
-		code = replace_bits_types_builtin(code, 'nlink_t')
-		code = replace_bits_types_builtin(code, 'gid_t')
-		code = replace_bits_types_builtin(code, 'uid_t')
-		code = replace_bits_types_builtin(code, 'off_t')
-		code = replace_bits_types_builtin(code, 'pid_t')
-		code = replace_bits_types_builtin(code, 'ssize_t')
+		for _,t in ipairs{
+			'dev_t',
+			'ino_t',
+			'mode_t',
+			'nlink_t',
+			'gid_t',
+			'uid_t',
+			'off_t',
+			'pid_t',
+			'ssize_t',
+		} do
+			code = replace_bits_types_builtin(code, t)
+		end
 		code = remove_need_macro(code, 'size_t')
 		return code
 	end},
@@ -851,13 +855,17 @@ return setmetatable({
 
 	-- depends: bits/types.h etc
 	{inc='<sys/stat.h>', out='Linux/c/sys/stat.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'dev_t')
-		code = replace_bits_types_builtin(code, 'ino_t')
-		code = replace_bits_types_builtin(code, 'mode_t')
-		code = replace_bits_types_builtin(code, 'nlink_t')
-		code = replace_bits_types_builtin(code, 'gid_t')
-		code = replace_bits_types_builtin(code, 'uid_t')
-		code = replace_bits_types_builtin(code, 'off_t')
+		for _,t in ipairs{
+			'dev_t',
+			'ino_t',
+			'mode_t',
+			'nlink_t',
+			'gid_t',
+			'uid_t',
+			'off_t',
+		} do
+			code = replace_bits_types_builtin(code, t)
+		end
 		code = code .. [[
 local lib = ffi.C
 return setmetatable({
@@ -877,6 +885,7 @@ return setmetatable({
 		inc = '<stdint.h>',
 		out = 'Linux/c/stdint.lua',
 		final = function(code)
+			code = replace_bits_types_builtin(code, 'intptr_t')
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 			return code
 		end,
@@ -962,11 +971,16 @@ includeList:append(table{
 		inc = '<unistd.h>',
 		out = 'Linux/c/unistd.lua',
 		final = function(code)
-			code = replace_bits_types_builtin(code, 'gid_t')
-			code = replace_bits_types_builtin(code, 'uid_t')
-			code = replace_bits_types_builtin(code, 'off_t')
-			code = replace_bits_types_builtin(code, 'pid_t')
-			code = replace_bits_types_builtin(code, 'ssize_t')
+			for _,t in ipairs{
+				'gid_t',
+				'uid_t',
+				'off_t',
+				'pid_t',
+				'ssize_t',
+				'intptr_t',
+			} do
+				code = replace_bits_types_builtin(code, t)
+			end
 			code = remove_need_macro(code, 'size_t')
 			code = remove_need_macro(code, 'NULL')
 
@@ -1514,7 +1528,7 @@ return require 'ffi.load' 'SDL2'
 		out = 'ogg.lua',
 		forceSplit = true,
 	},
-	
+
 	{
 		inc = '<vorbis/codec.h>',
 		out = 'vorbis/codec.lua',

@@ -132,7 +132,19 @@ includeList:append(table{
 
 	{inc='<corecrt_wstdio.h>', out='Windows/c/corecrt_wstdio.lua'},
 
-	{inc='<corecrt_stdio_config.h>', out='Windows/c/corecrt_stdio_config.lua'},
+	{
+		inc = '<corecrt_stdio_config.h>',
+		out = 'Windows/c/corecrt_stdio_config.lua',
+		final = function(code)
+			for _,f in ipairs{
+				'__local_stdio_printf_options',
+				'__local_stdio_scanf_options',
+			} do
+				code = removeInlineFunction(code, f)
+			end
+			return code
+		end,
+	},
 
 	-- uses corecrt_share.h
 	{
@@ -681,6 +693,11 @@ ffi.arch == 'x86' and {
 		out = 'Windows/c/stdint.lua',
 	},
 
+	{
+		inc = '<stdlib.h>',
+		out = 'Windows/c/stdlib.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
@@ -860,6 +877,19 @@ return setmetatable({
 		end,
 	},
 
+	-- depends: features.h sys/types.h
+	{
+		inc = '<stdlib.h>',
+		out = 'Linux/c/stdlib.lua',
+		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'wchar_t')
+			code = remove_need_macro(code, 'NULL')
+			return code
+		end,
+	},
+
 	-- put newly inserted entries here
 
 	-- depends on too much
@@ -916,15 +946,6 @@ includeList:append(table{
 		-- warning for redefining LLONG or something
 		code = removeWarnings(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		return code
-	end},
-
-	-- depends: features.h sys/types.h
-	{inc='<stdlib.h>', out='c/stdlib.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'wchar_t')
-		code = remove_need_macro(code, 'NULL')
 		return code
 	end},
 

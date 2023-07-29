@@ -219,6 +219,9 @@ if ffi.os == 'Windows' then
 //#define RC_INVOKED
 // ...sort of but in corecrt.h if you do set it then you have to set these as well:
 // too much of a mess ...
+
+// annoying macro.  needed at all?
+#define __declspec(x)
 ]]
 
 

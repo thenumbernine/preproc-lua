@@ -160,10 +160,12 @@ includeList:append(table{
 	{inc='<corecrt_wstring.h>', out='Windows/c/corecrt_wstring.lua'},
 
 	{inc='<corecrt_wstdlib.h>', out='Windows/c/corecrt_wstdlib.lua'},
+	{inc='<corecrt_wtime.h>', out='Windows/c/corecrt_wtime.lua'},
 
 -- cross support (so an intermediate ffi.c.stddef is needed for redirecting based on OS
 	{inc='<stddef.h>', out='Windows/c/stddef.lua'},
 
+	-- depends on: corecrt_wtime.h
 	{
 		inc = '<time.h>',
 		out = 'Windows/c/time.lua',
@@ -282,7 +284,7 @@ return setmetatable({
 		end,
 	},
 
-	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h, corecrt_wdirect.h, corecrt_stdio_config.h
+	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h corecrt_wdirect.h corecrt_stdio_config.h corecrt_wtime.h
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',

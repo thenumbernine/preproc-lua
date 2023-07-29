@@ -139,7 +139,7 @@ function Preproc:getDefineCode(k, v, l)
 			local oldv = self.generatedEnums[k]
 			if oldv then
 				if oldv ~= v then
-					print('warning: redefining '..k..' from '..tostring(oldv)..' to '..tostring(v).. ' (originally '..tostring(origv)..')')
+					print('/* WARNING: redefining '..k..' from '..tostring(oldv)..' to '..tostring(v).. ' (originally '..tostring(origv)..') */')
 					-- redefine the enum value as well?
 					-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
 				
@@ -1135,7 +1135,7 @@ function Preproc:__call(args)
 	xpcall(function()
 		while i <= #lines do
 			local l = lines[i]
-			local popInc = l:match'^/%* END   (.*) %*/$'
+			local popInc = l:match'^/%* %+* END   (.*) %*/$'
 			if popInc then
 				local last = self.includeStack:remove()
 -- TODO in my nested include() this is getting broken
@@ -1359,7 +1359,7 @@ function Preproc:__call(args)
 							end
 							if not self.alreadyIncludedFiles[fn] then
 --print('include '..fn)
-								lines:insert(i, '/* END   '..fn..' */')
+								lines:insert(i, '/* '..('+'):rep(#self.includeStack+1)..' END   '..fn..' */')
 								
 								
 								-- TODO not sure how I want to do this
@@ -1376,7 +1376,7 @@ function Preproc:__call(args)
 								end
 								
 								self.includeStack:insert(fn)
-								lines:insert(i, '/* BEGIN '..fn..' */')
+								lines:insert(i, '/* '..('+'):rep(#self.includeStack)..' BEGIN '..fn..' */')
 								i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
 							end
 						end
@@ -1429,7 +1429,7 @@ function Preproc:__call(args)
 							end
 							if not self.alreadyIncludedFiles[fn] then
 --print('include_next '..fn)
-								lines:insert(i, '/* END   '..fn..' */')
+								lines:insert(i, '/* '..('+'):rep(#self.includeStack+1)..' END   '..fn..' */')
 								-- at position i, insert the file
 								local newcode = assert(path(fn):read(), "couldn't find file "..fn)
 
@@ -1441,7 +1441,7 @@ function Preproc:__call(args)
 								end
 							
 								self.includeStack:insert(fn)
-								lines:insert(i, '/* BEGIN '..fn..' */')
+								lines:insert(i, '/* '..('+'):rep(#self.includeStack)..' BEGIN '..fn..' */')
 								i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
 							end
 						end

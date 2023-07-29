@@ -37,7 +37,8 @@ local function exec(cmd)
 	return os.execute(cmd)
 end
 
-local outdir = 'results'
+local outdirbase = 'results'	-- outdir without ffi/
+local outdir = outdirbase..'/ffi'
 for _,inc in ipairs(includeList) do
 	if not inc.dontGen then
 		local outpath = outdir..'/'..inc.out
@@ -116,6 +117,11 @@ ffi.cdef[[
 		-- verify it works
 		-- can't use -lext because that will load ffi/c stuff which could cause clashes in cdefs
 		-- luajit has loadfile, nice.
+		--[=[ use loadfile ... and all the old/original ffi locations
 		print(exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
+		--]=]
+		-- [=[ use require, and base it in the output folder
+		print(exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.]]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
+		--]=]
 	end
 end

@@ -288,10 +288,6 @@ return setmetatable({
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',
-		-- split for this as well, tho how to automate ..
-		-- tempted to make splits for everything or something
-		-- or even my own package.loader ...
-		forceSplit = true,
 		final = function(code)
 			code = removeDeclSpecNoInlineFunction(code, '__local_stdio_printf_options')
 			code = removeDeclSpecNoInlineFunction(code, '__local_stdio_scanf_options')
@@ -705,6 +701,7 @@ ffi.arch == 'x86' and {
 
 }:mapi(function(inc)
 	inc.os = 'Windows'
+	inc.forceSplit = true
 	return inc
 end))
 --]====]
@@ -714,16 +711,25 @@ includeList:append(table{
 
 	{inc='<stddef.h>', out='Linux/c/stddef.lua'},
 
-	{inc='<features.h>', out='c/features.lua'},
-	{inc='<bits/endian.h>',	out='c/bits/endian.lua'},
-	{inc='<bits/types/locale_t.h>',	out='c/bits/types/locale_t.lua'},
-	{inc='<bits/types/__sigset_t.h>',	out='c/bits/types/__sigset_t.lua'},
+	{inc='<features.h>', out='Linux/c/features.lua'},
+	{inc='<bits/endian.h>',	out='Linux/c/bits/endian.lua'},
+	{inc='<bits/types/locale_t.h>',	out='Linux/c/bits/types/locale_t.lua'},
+	{inc='<bits/types/__sigset_t.h>',	out='Linux/c/bits/types/__sigset_t.lua'},
 
-	{inc='<bits/wchar.h>', out='c/bits/wchar.lua'},
+	{inc='<bits/wchar.h>', out='Linux/c/bits/wchar.lua'},
 
 	-- depends: features.h
-	{inc='<bits/floatn.h>',	out='c/bits/floatn.lua'},
-	{inc='<bits/types.h>', out='c/bits/types.lua', final=function(code)
+	{
+		inc = '<bits/floatn.h>',
+		out = 'Linux/c/bits/floatn.lua',
+		final = function(code)
+			-- luajit doesn't handle float128 ...
+			--code = code:gsub('(128[_%w]*) = 1', '%1 = 0')
+			return code
+		end,
+	},
+
+	{inc='<bits/types.h>', out='Linux/c/bits/types.lua', final=function(code)
 		-- manually:
 		-- `enum { __FD_SETSIZE = 1024 };`
 		-- has to be replaced with
@@ -737,26 +743,26 @@ includeList:append(table{
 	end},
 
 	-- depends: bits/types.h
-	{inc='<bits/stdint-intn.h>',	out='c/bits/stdint-intn.lua'},
-	{inc='<bits/types/clockid_t.h>',	out='c/bits/types/clockid_t.lua'},
-	{inc='<bits/types/clock_t.h>',	out='c/bits/types/clock_t.lua'},
-	{inc='<bits/types/struct_timeval.h>',	out='c/bits/types/struct_timeval.lua'},
-	{inc='<bits/types/timer_t.h>',	out='c/bits/types/timer_t.lua'},
-	{inc='<bits/types/time_t.h>',	out='c/bits/types/time_t.lua'},
+	{inc='<bits/stdint-intn.h>',	out='Linux/c/bits/stdint-intn.lua'},
+	{inc='<bits/types/clockid_t.h>',	out='Linux/c/bits/types/clockid_t.lua'},
+	{inc='<bits/types/clock_t.h>',	out='Linux/c/bits/types/clock_t.lua'},
+	{inc='<bits/types/struct_timeval.h>',	out='Linux/c/bits/types/struct_timeval.lua'},
+	{inc='<bits/types/timer_t.h>',	out='Linux/c/bits/types/timer_t.lua'},
+	{inc='<bits/types/time_t.h>',	out='Linux/c/bits/types/time_t.lua'},
 
 	-- depends: bits/types.h bits/endian.h
-	{inc='<bits/types/struct_timespec.h>',	out='c/bits/types/struct_timespec.lua'},
+	{inc='<bits/types/struct_timespec.h>',	out='Linux/c/bits/types/struct_timespec.lua'},
 
-	{inc='<sys/ioctl.h>', out='c/sys/ioctl.lua'},
+	{inc='<sys/ioctl.h>', out='Linux/c/sys/ioctl.lua'},
 
-	{inc='<sys/select.h>', out='c/sys/select.lua', final=function(code)
+	{inc='<sys/select.h>', out='Linux/c/sys/select.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'suseconds_t')
 		return code
 	end},
 
 	-- depends: features.h bits/types.h
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
-	{inc='<sys/termios.h>', out='c/sys/termios.lua'},
+	{inc='<sys/termios.h>', out='Linux/c/sys/termios.lua'},
 
 	-- depends: features.h bits/types.h sys/select.h
 	{inc='<sys/types.h>', out='Linux/c/sys/types.lua', final=function(code)
@@ -777,7 +783,7 @@ includeList:append(table{
 		return code
 	end},
 
-	{inc='<linux/limits.h>', out='c/linux/limits.lua', final=function(code)
+	{inc='<linux/limits.h>', out='Linux/c/linux/limits.lua', final=function(code)
 		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
 		return code
 	end},
@@ -793,7 +799,7 @@ includeList:append(table{
 	-- also anything that includes this will have the line before it:
 	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
 	-- and that will have to be removed
-	{dontGen=true, inc='<bits/libc-header-start.h>', out='c/bits/libc-header-start.lua', final=function(code)
+	{dontGen=true, inc='<bits/libc-header-start.h>', out='Linux/c/bits/libc-header-start.lua', final=function(code)
 		return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	end},
 
@@ -878,15 +884,28 @@ return setmetatable({
 	end},
 
 	-- depends: bits/types.h
-	-- another where luajit -e "require 'results.c.stdint'" will work but luajit -e "assert(load(path'results/c/stdint.lua':read()))()" will give an error:
-	--  `attempt to redefine 'WCHAR_MIN' at line 75
-	-- because lua.ext already defined it
 	{
 		inc = '<stdint.h>',
 		out = 'Linux/c/stdint.lua',
 		final = function(code)
 			code = replace_bits_types_builtin(code, 'intptr_t')
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+
+			-- error: `attempt to redefine 'WCHAR_MIN' at line 75
+			-- because it's already in <wchar.h>
+			-- comment in stdint.h:
+			-- "These constants might also be defined in <wchar.h>."
+			-- yes. yes they are.
+			-- so how to fix this ...
+			-- looks like wchar.h doesn't include stdint.h...
+			-- and stdint.h includes bits/wchar.h but not wchar.h
+			-- and yeah the macros are in wchar.h, not bits/whcar.h
+			-- hmm ...
+			code = code:gsub(string.patescape[[
+enum { WCHAR_MIN = -2147483648 };
+enum { WCHAR_MAX = 2147483647 };
+]], [=[]] require 'ffi.c.wchar' ffi.cdef[[]=])
+
 			return code
 		end,
 	},
@@ -904,51 +923,29 @@ return setmetatable({
 		end,
 	},
 
-	-- put newly inserted entries here
-
-	-- depends on too much
-	-- moving to Linux-only block since now it is ...
-	-- it used to be just after stdarg.h ...
-	-- maybe I have to move everything up to that file into the Linux-only block too ...
 	{
-		inc = '<stdio.h>',
-		out = 'Linux/c/stdio.lua',
+		inc = '<bits/types/__mbstate_t.h>',
+		out = 'Linux/c/bits/types/__mbstate_t.lua',
+	},
+	{
+		inc = '<bits/types/__FILE.h>',
+		out = 'Linux/c/bits/types/__FILE.lua',
+	},
+	{
+		inc = '<bits/types/FILE.h>',
+		out = 'Linux/c/bits/types/FILE.lua',
+	},
+
+	-- depends on: bits/types/__mbstate_t.h
+	-- I never needed it in Linux, until I got to SDL
+	{
+		inc = '<wchar.h>',
+		out = 'Linux/c/wchar.lua',
 		final = function(code)
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			code = replace_bits_types_builtin(code, 'off_t')
-			code = replace_bits_types_builtin(code, 'ssize_t')
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
-			code = remove_VA_LIST_DEFINED(code)
-			code = replace_va_list_require(code)
-			-- this is in stdio.h and unistd.h
-			code = replace_SEEK(code)
-			-- this all stems from #define stdin stdin etc
-			-- which itself is just for C99/C89 compat
-			code = commentOutLine(code, 'enum { stdin = 0 };')
-			code = commentOutLine(code, 'enum { stdout = 0 };')
-			code = commentOutLine(code, 'enum { stderr = 0 };')
-			-- for fopen overloading
-			code = code .. [[
--- special case since in the browser app where I'm capturing fopen for remote requests and caching
--- feel free to not use the returend table and just use ffi.C for faster access
--- but know you'll be losing compatability with browser
-return setmetatable({}, {
-	__index = ffi.C,
-})
-]]
 			return code
 		end,
 	},
-
-}:mapi(function(inc)
-	inc.os = 'Linux'	-- meh?
-	return inc
-end))
-
--- ]====] End Linux-specific:
-includeList:append(table{
 
 	-- depends: bits/libc-header-start.h linux/limits.h
 	-- with this the preproc gets a warning:
@@ -956,7 +953,7 @@ includeList:append(table{
 	-- and that comes with a giant can of worms of how i'm handling cdef numbers vs macro defs vs lua numbers ...
 	-- mind you I could just make the warning: output into a comment
 	--  and there would be no need for manual manipulation here
-	{inc='<limits.h>', out='c/limits.lua', final=function(code)
+	{inc='<limits.h>', out='Linux/c/limits.lua', final=function(code)
 		-- warning for redefining LLONG or something
 		code = removeWarnings(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
@@ -964,7 +961,7 @@ includeList:append(table{
 	end},
 
 	-- depends: features.h, bits/types/__sigset_t.h
-	{inc='<setjmp.h>', out='c/setjmp.lua'},
+	{inc='<setjmp.h>', out='Linux/c/setjmp.lua'},
 
 	-- depends: features.h bits/types.h
 	{
@@ -987,6 +984,18 @@ includeList:append(table{
 			-- both unistd.h and stdio.h have SEEK_* defined, so ...
 			-- you'll have to manually create this file
 			code = replace_SEEK(code)
+
+			-- there are a few enums defined, and then #define'd, and preproc leaves an enum = 0, so make sure the latter is removed
+			-- [[ look for specific prefix of enum = 0
+			code = code:gsub('enum { _PC_[%w_]+ = 0 };', '')
+			code = code:gsub('enum { _SC_[%w_]+ = 0 };', '')
+			code = code:gsub('enum { _CS_[%w_]+ = 0 };', '')
+			--]]
+			--[[ would be nice to remove automatically
+			code = code:gsub('([%w_]+)(,?) enum { ([%w_]+) = 0 };', function(a,b,c)
+				if a == c then return a..b else return '%0' end
+			end)
+			--]]
 
 			code = code:gsub(
 				-- TODO i'm sure this dir will change in the future ...
@@ -1025,7 +1034,7 @@ return ffi.C
 	},
 
 	-- depends: stddef.h bits/types/time_t.h bits/types/struct_timespec.h
-	{inc='<sched.h>', out='c/sched.lua', final=function(code)
+	{inc='<sched.h>', out='Linux/c/sched.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'pid_t')
 		code = remove_need_macro(code, 'size_t')
 		code = remove_need_macro(code, 'NULL')
@@ -1033,7 +1042,7 @@ return ffi.C
 	end},
 
 	-- depends on too much
-	{inc='<stdarg.h>', out='c/stdarg.lua', final=function(code)
+	{inc='<stdarg.h>', out='Linux/c/stdarg.lua', final=function(code)
 		-- stdio.h and stdarg.h both define this
 		-- typedef __gnuc_va_list va_list;
 		-- enum { _VA_LIST_DEFINED = 1 };
@@ -1043,7 +1052,7 @@ return ffi.C
 		return code
 	end},
 
-	{inc='<stdbool.h>', out='c/stdbool.lua', final=function(code)
+	{inc='<stdbool.h>', out='Linux/c/stdbool.lua', final=function(code)
 		-- luajit has its own bools already defined
 		code = commentOutLine(code, 'enum { bool = 0 };')
 		code = commentOutLine(code, 'enum { true = 1 };')
@@ -1052,26 +1061,96 @@ return ffi.C
 	end},
 
 	-- depends: features.h stdint.h
-	{inc='<inttypes.h>', out='c/inttypes.lua'},
+	{inc='<inttypes.h>', out='Linux/c/inttypes.lua'},
 
+	-- depends on too much
+	-- moving to Linux-only block since now it is ...
+	-- it used to be just after stdarg.h ...
+	-- maybe I have to move everything up to that file into the Linux-only block too ...
+	{
+		inc = '<stdio.h>',
+		out = 'Linux/c/stdio.lua',
+		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			code = replace_bits_types_builtin(code, 'off_t')
+			code = replace_bits_types_builtin(code, 'ssize_t')
+			code = remove_need_macro(code, 'size_t')
+			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code, '__va_list')
+			code = remove_VA_LIST_DEFINED(code)
+			code = replace_va_list_require(code)
+			-- this is in stdio.h and unistd.h
+			code = replace_SEEK(code)
+			-- this all stems from #define stdin stdin etc
+			-- which itself is just for C99/C89 compat
+			code = commentOutLine(code, 'enum { stdin = 0 };')
+			code = commentOutLine(code, 'enum { stdout = 0 };')
+			code = commentOutLine(code, 'enum { stderr = 0 };')
+			-- for fopen overloading
+			code = code .. [[
+-- special case since in the browser app where I'm capturing fopen for remote requests and caching
+-- feel free to not use the returend table and just use ffi.C for faster access
+-- but know you'll be losing compatability with browser
+return setmetatable({}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
+	},
+
+	{
+		inc = '<math.h>',
+		out = 'Linux/c/math.lua',
+		forceSplit = true,	-- until I add the Windows entry
+		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			code = code:gsub('enum { __MATH_DECLARING_DOUBLE = %d+ };', '')
+			code = code:gsub('enum { __MATH_DECLARING_FLOATN = %d+ };', '')
+
+			-- [[ enums and #defines intermixed ... smh
+			code = code:gsub(' ([_%a][_%w]*) = enum { ([_%a][_%w]*) = %d+ };', function(a,b)
+				if a == b then return ' '..a..' = ' end
+				return '%0'
+			end)
+			--]]
+
+			-- gcc thinks we have float128 support, but luajit doesn't support it
+			code = code:gsub('[^\n]*_Float128[^\n]*', '')
+
+			return code
+		end,
+	},
 
 -- requires manual manipulation:
 
 	-- this is here for require() insertion but cannot be used for generation
 	-- it must be manually extracted from c/setjmp.lua
-	{dontGen=true, inc='<bits/setjmp.h>', out='c/bits/setjmp.lua'},
+	{dontGen=true, inc='<bits/setjmp.h>', out='Linux/c/bits/setjmp.lua'},
 
-	{dontGen=true, inc='<bits/dirent.h>', out='c/bits/dirent.lua', final=function(code)
+	{dontGen=true, inc='<bits/dirent.h>', out='Linux/c/bits/dirent.lua', final=function(code)
 		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
 		return code
 	end},
 
 	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here
 	-- but i guess it doesn't even have to be here.
-	--{dontGen=true, inc='<va_list.h>', out='c/va_list.lua'},
+	--{dontGen=true, inc='<va_list.h>', out='Linux/c/va_list.lua'},
 
 	-- same with just.  just a placeholder:
-	--{dontGen=true, inc='<__FD_SETSIZE.h>', out='c/__FD_SETSIZE.lua'},
+	--{dontGen=true, inc='<__FD_SETSIZE.h>', out='Linux/c/__FD_SETSIZE.lua'},
+
+
+
+
+}:mapi(function(inc)
+	inc.os = 'Linux'	-- meh?
+	inc.forceSplit = true
+	return inc
+end))
+
+-- ]====] End Linux-specific:
+includeList:append(table{
 
 -- these come from external libraries (so I don't put them in the c/ subfolder)
 
@@ -1277,7 +1356,9 @@ return require 'ffi.load' 'OpenCL'
 	-- depends: stddef.h stdint.h inttypes.h stdio.h stdarg.h
 	{
 		inc = '<tiffio.h>',
-		out = 'Linux/tiff.lua',
+		out = ffi.os..'/tiff.lua',
+		forceSplit = true,
+		os = ffi.os,
 		flags = string.trim(io.readproc'pkg-config --cflags libtiff-4'),
 		final = function(code)
 			code = remove_need_macro(code, 'size_t')
@@ -1293,7 +1374,9 @@ return require 'ffi.load' 'OpenCL'
 	-- windows is using 2.0.4 just because 2.0.3 and cmake is breaking for msvc
 	{
 		inc = '<jpeglib.h>',
-		out = 'Linux/jpeg.lua',
+		out = ffi.os..'/jpeg.lua',
+		forceSplit = true,
+		os = ffi.os,
 		final = function(code)
 			code = [[
 require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
@@ -1328,7 +1411,9 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 		inc = '<GL/gl.h>',
 		moreincs = {'<GL/glext.h>'},
 		flags = '-DGL_GLEXT_PROTOTYPES',
-		out = 'Linux/OpenGL.lua',
+		out = ffi.os..'/OpenGL.lua',
+		forceSplit = true,
+		os = ffi.os,
 		final = function(code)
 			code = code .. [[
 return require 'ffi.load' 'GL'
@@ -1454,19 +1539,32 @@ return require 'ffi.load' 'openblas'
 		return code
 	end},
 
-	-- TODO preproc on this generate a *LOT* of `enum { LAPACK_lsame_base = 0 };`
-	-- they are generated from macro calls to LAPACK_GLOBAL
-	-- which is defined as
-	-- #define LAPACK_GLOBAL(lcname,UCNAME)  lcname##_
-	-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
 	{inc='<lapack.h>', out='lapack.lua', final=function(code)
+		-- needs lapack_int replaced with int, except the enum def line
+		-- the def is conditional, but i think this is the right eval ...
+		code = code:gsub('enum { lapack_int = 0 };', 'typedef int32_t lapack_int;')
+--[[
+#if defined(LAPACK_ILP64)
+#define lapack_int        int64_t
+#else
+#define lapack_int        int32_t
+#endif
+--]]
+
+		-- preproc on this generate a *LOT* of `enum { LAPACK_lsame_base = 0 };`
+		-- they are generated from macro calls to LAPACK_GLOBAL
+		-- which is defined as
+		-- #define LAPACK_GLOBAL(lcname,UCNAME)  lcname##_
+		-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
+		code = code:gsub('enum { LAPACK_[_%w]+ = 0 };', '')
+		code = code:gsub('\n\n', '\n')
+
 		code = code .. [[
 return require 'ffi.load' 'lapack'
 ]]
 		return code
 	end},
 
-	-- needs lapack_int replaced with int, except the enum def line
 	{inc='<lapacke.h>', out='lapacke.lua', final=function(code)
 		code = code .. [[
 return require 'ffi.load' 'lapacke'
@@ -1522,11 +1620,13 @@ return require 'ffi.load' 'SDL2'
 		end,
 	},
 
-	-- TODO 'forceSplit' on all 3rd party libs
 	{
 		inc = '<ogg/ogg.h>',
-		out = 'ogg.lua',
+		-- build this separately for each OS.
+		-- generate the os splitter file
+		out = ffi.os..'/ogg.lua',
 		forceSplit = true,
+		os = ffi.os,
 	},
 
 	{
@@ -1538,8 +1638,11 @@ return require 'ffi.load' 'SDL2'
 		out = 'vorbis/vorbisfile.lua',
 		flags = '-I/usr/include/vorbis',
 		final = function(code)
-			-- TODO the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
+			-- the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
 			-- ... I need to comment it out *HERE*.
+			code = code:gsub('static int _ov_header_fseek_wrap%b()%b{}', '')
+			code = code:gsub('static ov_callbacks OV_CALLBACKS_[_%w]+ = %b{};', '')
+
 			code = code .. [[
 local lib = require 'ffi.load' 'vorbisfile'
 

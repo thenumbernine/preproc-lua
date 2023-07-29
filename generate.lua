@@ -305,6 +305,7 @@ else	-- assume everything else uses gcc
 #define __asm__(x)
 #define __has_unique_object_representations(x) 0
 #define _GLIBCXX_HAS_BUILTIN(x)	0
+#define _Static_assert(a,b)		// this is in <sys/cdefs.h> ... why isn't it working in <SDL2/SDL.h> ?
 ]]
 end
 

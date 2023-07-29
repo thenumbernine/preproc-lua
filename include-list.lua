@@ -2,6 +2,14 @@
 -- this is used for automated generation
 -- this is also used during generation for swapping out #includes with require()'s of already-generated files
 
+--[[
+TODO an exhaustive way to generate all with the least # of intermediate files could be
+- go down the list
+- for each file, generate
+- as you reach includes, see if any previous have requested the same include.
+- if so then generate that include, and restart the process.
+--]]
+
 local ffi = require 'ffi'
 local template = require 'template'
 local string = require 'ext.string'
@@ -17,6 +25,7 @@ local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	return (code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', ''))
 end
 
+-- TODO maybe ffi.Linux.c.bits.types instead
 -- pid_t and pid_t_defined are manually inserted into lots of dif files
 -- i've separated it into its own file myself, so it has to be manually replaced
 -- same is true for a few other types
@@ -29,8 +38,8 @@ enum { __]]..ctype..[[_defined = 1 };]]),
 	return code
 end
 
-local function remove_need_macro(code, name)
-	code = code:gsub('enum { __need_'..name..' = 1 };\n', '')
+local function remove_need_macro(code)
+	code = code:gsub('enum { __need_[_%w]* = 1 };\n', '')
 	return code
 end
 
@@ -711,7 +720,11 @@ includeList:append(table{
 
 	{inc='<stddef.h>', out='Linux/c/stddef.lua'},
 
+	{inc='<bits/wordsize.h>', out='Linux/c/bits/wordsize.lua'},
+
+	-- depends: bits/wordsize.h
 	{inc='<features.h>', out='Linux/c/features.lua'},
+
 	{inc='<bits/endian.h>',	out='Linux/c/bits/endian.lua'},
 	{inc='<bits/types/locale_t.h>',	out='Linux/c/bits/types/locale_t.lua'},
 	{inc='<bits/types/__sigset_t.h>',	out='Linux/c/bits/types/__sigset_t.lua'},
@@ -779,7 +792,7 @@ includeList:append(table{
 		} do
 			code = replace_bits_types_builtin(code, t)
 		end
-		code = remove_need_macro(code, 'size_t')
+		code = remove_need_macro(code)
 		return code
 	end},
 
@@ -806,8 +819,7 @@ includeList:append(table{
 	-- depends: features.h stddef.h bits/libc-header-start.h
 	{inc='<string.h>', out='Linux/c/string.lua', final=function(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
+		code = remove_need_macro(code)
 		return code
 	end},
 
@@ -817,8 +829,7 @@ includeList:append(table{
 		inc = '<time.h>',
 		out = 'Linux/c/time.lua',
 		final = function(code)
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code)
 			code = replace_bits_types_builtin(code, 'pid_t')
 			return code
 		end,
@@ -888,8 +899,15 @@ return setmetatable({
 		inc = '<stdint.h>',
 		out = 'Linux/c/stdint.lua',
 		final = function(code)
-			code = replace_bits_types_builtin(code, 'intptr_t')
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+
+			--code = replace_bits_types_builtin(code, 'intptr_t')
+			-- not the same def ...
+			code = code:gsub([[
+typedef long int intptr_t;
+enum { __intptr_t_defined = 1 };
+]], [=[]] require 'ffi.c.bits.types.intptr_t' ffi.cdef[[]=])
+
 
 			-- error: `attempt to redefine 'WCHAR_MIN' at line 75
 			-- because it's already in <wchar.h>
@@ -916,9 +934,7 @@ enum { WCHAR_MAX = 2147483647 };
 		out = 'Linux/c/stdlib.lua',
 		final = function(code)
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'wchar_t')
-			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code)
 			return code
 		end,
 	},
@@ -943,11 +959,18 @@ enum { WCHAR_MAX = 2147483647 };
 		out = 'Linux/c/wchar.lua',
 		final = function(code)
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			code = remove_need_macro(code)
 			return code
 		end,
 	},
 
-	-- depends: bits/libc-header-start.h linux/limits.h
+	-- depends: bits/wordsize.h
+	{
+		inc = '<bits/posix1_lim.h>',
+		out = 'Linux/c/bits/posix1_lim.lua',
+	},
+
+	-- depends: bits/libc-header-start.h linux/limits.h bits/posix1_lim.h
 	-- with this the preproc gets a warning:
 	--  warning: redefining LLONG_MIN from -1 to -9.2233720368548e+18 (originally (-LLONG_MAX - 1LL))
 	-- and that comes with a giant can of worms of how i'm handling cdef numbers vs macro defs vs lua numbers ...
@@ -978,8 +1001,7 @@ enum { WCHAR_MAX = 2147483647 };
 			} do
 				code = replace_bits_types_builtin(code, t)
 			end
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code)
 
 			-- both unistd.h and stdio.h have SEEK_* defined, so ...
 			-- you'll have to manually create this file
@@ -1036,8 +1058,7 @@ return ffi.C
 	-- depends: stddef.h bits/types/time_t.h bits/types/struct_timespec.h
 	{inc='<sched.h>', out='Linux/c/sched.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'pid_t')
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
+		code = remove_need_macro(code)
 		return code
 	end},
 
@@ -1074,9 +1095,7 @@ return ffi.C
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 			code = replace_bits_types_builtin(code, 'off_t')
 			code = replace_bits_types_builtin(code, 'ssize_t')
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
+			code = remove_need_macro(code)
 			code = remove_VA_LIST_DEFINED(code)
 			code = replace_va_list_require(code)
 			-- this is in stdio.h and unistd.h
@@ -1141,6 +1160,95 @@ return setmetatable({}, {
 	--{dontGen=true, inc='<__FD_SETSIZE.h>', out='Linux/c/__FD_SETSIZE.lua'},
 
 
+	-- depends on limits.h bits/posix1_lim.h
+	-- because lua.ext uses some ffi stuff, it says "attempt to redefine 'dirent' at line 2"  for my load(path(...):read()) but not for require'results....'
+	{
+		inc = '<dirent.h>',
+		out = 'Linux/c/dirent.lua',
+		final = function(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			code = remove_need_macro(code)
+			return code
+		end,
+	},
+
+	-- depends: sched.h time.h
+	{inc='<pthread.h>', out='Linux/c/pthread.lua', final=function(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+	end},
+
+	{inc='<sys/param.h>', out='Linux/c/sys/param.lua', final=function(code)
+		-- warning for redefining LLONG_MIN or something
+		code = removeWarnings(code)
+		code = fixEnumsAndDefineMacrosInterleaved(code)
+		-- i think all these stem from #define A B when the value is a string and not numeric
+		--  but my #define to enum inserter forces something to be produced
+		code = commentOutLine(code, 'enum { SIGIO = 0 };')
+		code = commentOutLine(code, 'enum { SIGCLD = 0 };')
+		code = commentOutLine(code, 'enum { SI_DETHREAD = 0 };')
+		code = commentOutLine(code, 'enum { SI_TKILL = 0 };')
+		code = commentOutLine(code, 'enum { SI_SIGIO = 0 };')
+		code = commentOutLine(code, 'enum { SI_ASYNCIO = 0 };')
+		code = commentOutLine(code, 'enum { SI_MESGQ = 0 };')
+		code = commentOutLine(code, 'enum { SI_TIMER = 0 };')
+		code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
+		code = commentOutLine(code, 'enum { SI_USER = 0 };')
+		code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
+		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+		code = remove_need_macro(code)
+		return code
+	end},
+
+	{inc='<sys/time.h>', out='Linux/c/sys/time.lua', final=function(code)
+		code = replace_bits_types_builtin(code, 'suseconds_t')
+		code = fixEnumsAndDefineMacrosInterleaved(code)
+		return code
+	end},
+
+
+	-- TODO
+	-- uses a vararg macro which I don't support yet
+--	{inc='<sys/sysinfo.h>', out='c/sys/sysinfo.lua'},
+
+	-- depends on bits/libc-header-start
+	-- '<identifier>' expected near '_Complex' at line 2
+	-- has to do with enum/define'ing the builtin word _Complex
+	{inc='<complex.h>', out='Linux/c/complex.lua', final=function(code)
+		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		code = commentOutLine(code, 'enum { _Complex = 0 };')
+		code = commentOutLine(code, 'enum { complex = 0 };')
+		code = commentOutLine(code, 'enum { _Mdouble_ = 0 };')
+
+		-- this uses define<=>typedef which always has some trouble
+		-- and this uses redefines which luajit ffi cant do so...
+		-- TODO from
+		--  /* # define _Mdouble_complex_ _Mdouble_ _Complex ### string, not number "_Mdouble_ _Complex" */
+		-- to
+		--  /* redefining matching value: #define _Mdouble_\t\tfloat */
+		-- replace 	_Mdouble_complex_ with double _Complex
+		-- from there to
+		--  /* # define _Mdouble_       long double ### string, not number "long double" */
+		-- replace _Mdouble_complex_ with float _Complex
+		-- and from there until then end
+		-- replace _Mdouble_complex_  with long double _Complex
+		local a = code:find'_Mdouble_complex_ _Mdouble_ _Complex'
+		local b = code:find'define _Mdouble_%s*float'
+		local c = code:find'define _Mdouble_%s*long double'
+		local parts = table{
+			code:sub(1,a),
+			code:sub(a+1,b),
+			code:sub(b+1,c),
+			code:sub(c+1),
+		}
+		parts[2] = parts[2]:gsub('_Mdouble_complex_', 'double _Complex')
+		parts[3] = parts[3]:gsub('_Mdouble_complex_', 'float _Complex')
+		parts[4] = parts[4]:gsub('_Mdouble_complex_', 'long double _Complex')
+		code = parts:concat()
+
+		return code
+	end},
+
 
 
 }:mapi(function(inc)
@@ -1170,8 +1278,7 @@ includeList:append(table{
 			-- my preproc => luajit can't handle defines that are working in place of typedefs
 			code = code:gsub('enum { z_off_t = 0 };\n', '')
 			code = code:gsub('z_off_t', 'off_t')
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
+			code = remove_need_macro(code)
 
 			-- add some macros onto the end manually
 			code = code .. [[
@@ -1246,10 +1353,7 @@ return require 'ffi.load' 'gif'
 		-- OFF_T is define'd to off_t soo ...
 		code = code:gsub('enum { OFF_T = 0 };\n', '')
 		code = code:gsub('OFF_T', 'off_t')
-		code = remove_need_macro(code, 'size_t')
-		code = remove_need_macro(code, 'NULL')
-		code = remove_need_macro(code, 'wchar_t')
-		code = remove_need_macro(code, '__va_list')
+		code = remove_need_macro(code)
 		code = code .. [[
 return require 'ffi.load' 'cfitsio'
 ]]
@@ -1277,9 +1381,7 @@ return require 'ffi.load' 'netcdf'
 				-- pretty soon a full set of headers + full preprocessor might be necessary
 				-- TODO regen this on Windows and compare?
 			code = removeWarnings(code)	-- LLONG_MIN
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
+			code = remove_need_macro(code)
 			code = code .. [[
 return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 ]]
@@ -1315,9 +1417,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 				-- simultaneously insert require to ffi/sdl.lua
 				"]] require 'ffi.sdl' ffi.cdef[["
 			)
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
+			code = remove_need_macro(code)
 
 			-- looks like in the backend file there's one default parameter value ...
 			code = code:gsub('glsl_version = nullptr', 'glsl_version')
@@ -1361,9 +1461,7 @@ return require 'ffi.load' 'OpenCL'
 		os = ffi.os,
 		flags = string.trim(io.readproc'pkg-config --cflags libtiff-4'),
 		final = function(code)
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
+			code = remove_need_macro(code)
 			return code
 		end,
 	},
@@ -1429,9 +1527,7 @@ return require 'ffi.load' 'GL'
 		flags = string.trim(io.readproc'pkg-config --cflags lua'),
 		final = function(code)
 			code = removeWarnings(code)	-- LLONG_MIN
-			code = remove_need_macro(code, 'size_t')
-			code = remove_need_macro(code, 'NULL')
-			code = remove_need_macro(code, '__va_list')
+			code = remove_need_macro(code)
 			code = [[
 ]] .. code .. [[
 return require 'ffi.load' 'lua'
@@ -1439,95 +1535,6 @@ return require 'ffi.load' 'lua'
 			return code
 		end,
 	},
-
-	-- depends on limits.h
-	-- because lua.ext uses some ffi stuff, it says "attempt to redefine 'dirent' at line 2"  for my load(path(...):read()) but not for require'results....'
-	{
-		inc = '<dirent.h>',
-		out = 'c/dirent.lua',
-		final = function(code)
-			code = fixEnumsAndDefineMacrosInterleaved(code)
-			return code
-		end,
-	},
-
-	-- depends: sched.h time.h
-	{inc='<pthread.h>', out='c/pthread.lua', final=function(code)
-			code = fixEnumsAndDefineMacrosInterleaved(code)
-			return code
-	end},
-
-	{inc='<sys/param.h>', out='c/sys/param.lua', final=function(code)
-		-- warning for redefining LLONG_MIN or something
-		code = removeWarnings(code)
-		code = fixEnumsAndDefineMacrosInterleaved(code)
-		-- i think all these stem from #define A B when the value is a string and not numeric
-		--  but my #define to enum inserter forces something to be produced
-		code = commentOutLine(code, 'enum { SIGIO = 0 };')
-		code = commentOutLine(code, 'enum { SIGCLD = 0 };')
-		code = commentOutLine(code, 'enum { SI_DETHREAD = 0 };')
-		code = commentOutLine(code, 'enum { SI_TKILL = 0 };')
-		code = commentOutLine(code, 'enum { SI_SIGIO = 0 };')
-		code = commentOutLine(code, 'enum { SI_ASYNCIO = 0 };')
-		code = commentOutLine(code, 'enum { SI_MESGQ = 0 };')
-		code = commentOutLine(code, 'enum { SI_TIMER = 0 };')
-		code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
-		code = commentOutLine(code, 'enum { SI_USER = 0 };')
-		code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
-		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
-		code = remove_need_macro(code, 'NULL')
-		code = remove_need_macro(code, 'size_t')
-		return code
-	end},
-
-	{inc='<sys/time.h>', out='c/sys/time.lua', final=function(code)
-		code = replace_bits_types_builtin(code, 'suseconds_t')
-		code = fixEnumsAndDefineMacrosInterleaved(code)
-		return code
-	end},
-
-
-	-- TODO
-	-- uses a vararg macro which I don't support yet
---	{inc='<sys/sysinfo.h>', out='c/sys/sysinfo.lua'},
-
-	-- depends on bits/libc-header-start
-	-- '<identifier>' expected near '_Complex' at line 2
-	-- has to do with enum/define'ing the builtin word _Complex
-	{inc='<complex.h>', out='c/complex.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = commentOutLine(code, 'enum { _Complex = 0 };')
-		code = commentOutLine(code, 'enum { complex = 0 };')
-		code = commentOutLine(code, 'enum { _Mdouble_ = 0 };')
-
-		-- this uses define<=>typedef which always has some trouble
-		-- and this uses redefines which luajit ffi cant do so...
-		-- TODO from
-		--  /* # define _Mdouble_complex_ _Mdouble_ _Complex ### string, not number "_Mdouble_ _Complex" */
-		-- to
-		--  /* redefining matching value: #define _Mdouble_\t\tfloat */
-		-- replace 	_Mdouble_complex_ with double _Complex
-		-- from there to
-		--  /* # define _Mdouble_       long double ### string, not number "long double" */
-		-- replace _Mdouble_complex_ with float _Complex
-		-- and from there until then end
-		-- replace _Mdouble_complex_  with long double _Complex
-		local a = code:find'_Mdouble_complex_ _Mdouble_ _Complex'
-		local b = code:find'define _Mdouble_%s*float'
-		local c = code:find'define _Mdouble_%s*long double'
-		local parts = table{
-			code:sub(1,a),
-			code:sub(a+1,b),
-			code:sub(b+1,c),
-			code:sub(c+1),
-		}
-		parts[2] = parts[2]:gsub('_Mdouble_complex_', 'double _Complex')
-		parts[3] = parts[3]:gsub('_Mdouble_complex_', 'float _Complex')
-		parts[4] = parts[4]:gsub('_Mdouble_complex_', 'long double _Complex')
-		code = parts:concat()
-
-		return code
-	end},
 
 	-- depends on complex.h
 	{inc='<cblas.h>', out='cblas.lua', final=function(code)
@@ -1601,17 +1608,16 @@ return require 'ffi.load' 'png'
 		inc = '<SDL2/SDL.h>',
 		out = 'sdl.lua',
 		flags = string.trim(io.readproc'pkg-config --cflags sdl2'),
+		silentincs = {
+			'<immintrin.h>',
+		},
 		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 			-- warning: redefining __MATH_DECLARING_DOUBLE from 1 to 0 (originally 0)
 			-- warning: redefining __MATH_DECLARING_FLOATN from 0 to 1 (originally 1)
 			code = removeWarnings(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			-- TODO SDL includes wchar.h which defines WCHAR_MIN and WCHAR_MAX
-			--  	and it includes bits/wchar.h which define __WCHAR_MIN and max
-			-- but stdint includes only bits/wchar.h to define __WCHAR_MIN
-			--	but stdint doesnt include wchar.h ... so WCHAR_MIN isnt defined
-			-- but stdint does define WCHAR_MIN and max on its own ... why ... why doesn't it just include wchar.h?
-			-- so hmm...
+
+			code = code:gsub('enum { _begin_code_h = 1 };', '')
 
 			code = code .. [[
 return require 'ffi.load' 'SDL2'

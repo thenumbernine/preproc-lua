@@ -702,11 +702,37 @@ ffi.arch == 'x86' and {
 		out = 'Windows/c/stdint.lua',
 	},
 
-	-- depends: corecrt_wstdlib.h
+	{
+		inc = '<stdarg.h>',
+		out = 'Windows/c/stdarg.lua',
+	},
+
+	-- identical in windows and linux ...
+	{
+		inc = '<stdbool.h>',
+		out = 'Windows/c/stdbool.lua',
+		final = function(code)
+			-- luajit has its own bools already defined
+			code = commentOutLine(code, 'enum { bool = 0 };')
+			code = commentOutLine(code, 'enum { true = 1 };')
+			code = commentOutLine(code, 'enum { false = 0 };')
+			return code
+		end
+	},
+
+	{
+		inc = '<limits.h>',
+		out = 'Windows/c/limits.lua',
+	},
+
+	-- depends: corecrt_wstdlib.h limits.h
 	{
 		inc = '<stdlib.h>',
 		out = 'Windows/c/stdlib.lua',
 	},
+	
+	-- needed by png.h
+	{inc='<setjmp.h>', out='Windows/c/setjmp.lua'},
 
 }:mapi(function(inc)
 	inc.os = 'Windows'
@@ -1073,6 +1099,7 @@ return ffi.C
 		return code
 	end},
 
+	-- identical in windows and linux ...
 	{inc='<stdbool.h>', out='Linux/c/stdbool.lua', final=function(code)
 		-- luajit has its own bools already defined
 		code = commentOutLine(code, 'enum { bool = 0 };')
@@ -1395,6 +1422,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 		},
 	},
 
+	-- depends on: stdio.h stdint.h stdarg.h stdbool.h
 	{
 		-- cimgui has these 3 files together:
 		-- OpenGL i had to separate them

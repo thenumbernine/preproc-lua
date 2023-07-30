@@ -204,6 +204,8 @@ if ffi.os == 'Windows' then
 #define __CLRCALL_PURE_OR_CDECL __cdecl
 #define __CRTDECL __CLRCALL_PURE_OR_CDECL
 #define _CRT_DEPRECATE_TEXT(_Text)
+#define _VCRT_ALIGN(x) __declspec(align(x))
+
 
 // in corecrt.h but can be overridden
 // hopefully this will help:

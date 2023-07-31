@@ -33,7 +33,7 @@ local function replace_bits_types_builtin(code, ctype)
 	code = code:gsub(string.patescape([[
 typedef __]]..ctype..[[ ]]..ctype..[[;
 enum { __]]..ctype..[[_defined = 1 };]]),
-		[=[]] require 'ffi.c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
+		[=[]] require 'ffi.req' 'c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
 	)
 	return code
 end
@@ -52,7 +52,7 @@ end
 local function replace_va_list_require(code)
 	code = code:gsub(
 		'typedef __gnuc_va_list va_list;',
-		[=[]] require 'ffi.c.va_list' ffi.cdef[[]=]
+		[=[]] require 'ffi.req' 'c.va_list' ffi.cdef[[]=]
 	)
 	return code
 end
@@ -63,7 +63,7 @@ local function replace_SEEK(code)
 enum { SEEK_SET = 0 };
 enum { SEEK_CUR = 1 };
 enum { SEEK_END = 2 };
-]], "]] require 'ffi.c.bits.types.SEEK' ffi.cdef[[\n")
+]], "]] require 'ffi.req' 'c.bits.types.SEEK' ffi.cdef[[\n")
 end
 
 -- TODO keeping warnings as comments seems nice
@@ -251,7 +251,6 @@ typedef intptr_t ssize_t;
 	{
 		inc = '<io.h>',
 		out = 'Windows/c/io.lua',
-		forceSplit = true,
 		final = function(code)
 			code = code:gsub('enum { _finddata_t = 0 };', '')
 			code = code:gsub('enum { _finddatai64_t = 0 };', '')
@@ -462,7 +461,6 @@ return setmetatable({
 	{
 		inc = '<direct.h>',
 		out = 'Windows/c/direct.lua',
-		forceSplit = true,
 	},
 
 	-- depends: corecrt_stdio_config.h
@@ -664,7 +662,6 @@ return setmetatable({
 	{
 		inc = '<sys/utime.h>',
 		out = 'Windows/c/sys/utime.lua',
-		forceSplit = true,
 		-- TODO custom split file that redirects to Windows -> sys.utime, Linux -> utime
 		final = function(code)
 			for _,f in ipairs{
@@ -736,7 +733,6 @@ ffi.arch == 'x86' and {
 
 }:mapi(function(inc)
 	inc.os = 'Windows'
-	inc.forceSplit = true
 	return inc
 end))
 --]====]
@@ -772,12 +768,12 @@ includeList:append(table{
 		-- manually:
 		-- `enum { __FD_SETSIZE = 1024 };`
 		-- has to be replaced with
-		-- `]] require 'ffi.c.__FD_SETSIZE' ffi.cdef[[`
+		-- `]] require 'ffi.req' 'c.__FD_SETSIZE' ffi.cdef[[`
 		-- because it's a macro that appears in a few places, so I manually define it.
 		-- (and maybe also write the file?)
 		return (code:gsub(
 			'enum { __FD_SETSIZE = 1024 };',
-			[=[]] require 'ffi.c.__FD_SETSIZE' ffi.cdef[[]=]
+			[=[]] require 'ffi.req' 'c.__FD_SETSIZE' ffi.cdef[[]=]
 		))
 	end},
 
@@ -883,7 +879,6 @@ return setmetatable({
 	{
 		inc = '<utime.h>',
 		out = 'Linux/c/utime.lua',
-		forceSplit = true,
 		final = function(code)
 			code = code .. [[
 return setmetatable({
@@ -932,7 +927,7 @@ return setmetatable({
 			code = code:gsub([[
 typedef long int intptr_t;
 enum { __intptr_t_defined = 1 };
-]], [=[]] require 'ffi.c.bits.types.intptr_t' ffi.cdef[[]=])
+]], [=[]] require 'ffi.req' 'c.bits.types.intptr_t' ffi.cdef[[]=])
 
 
 			-- error: `attempt to redefine 'WCHAR_MIN' at line 75
@@ -948,7 +943,7 @@ enum { __intptr_t_defined = 1 };
 			code = code:gsub(string.patescape[[
 enum { WCHAR_MIN = -2147483648 };
 enum { WCHAR_MAX = 2147483647 };
-]], [=[]] require 'ffi.c.wchar' ffi.cdef[[]=])
+]], [=[]] require 'ffi.req' 'c.wchar' ffi.cdef[[]=])
 
 			return code
 		end,
@@ -1148,7 +1143,6 @@ return setmetatable({}, {
 	{
 		inc = '<math.h>',
 		out = 'Linux/c/math.lua',
-		forceSplit = true,	-- until I add the Windows entry
 		final = function(code)
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 			code = code:gsub('enum { __MATH_DECLARING_DOUBLE = %d+ };', '')
@@ -1236,7 +1230,7 @@ return setmetatable({}, {
 
 	-- TODO
 	-- uses a vararg macro which I don't support yet
---	{inc='<sys/sysinfo.h>', out='c/sys/sysinfo.lua'},
+--	{inc='<sys/sysinfo.h>', out='Linux/c/sys/sysinfo.lua'},
 
 	-- depends on bits/libc-header-start
 	-- '<identifier>' expected near '_Complex' at line 2
@@ -1276,11 +1270,8 @@ return setmetatable({}, {
 		return code
 	end},
 
-
-
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
-	inc.forceSplit = true
 	return inc
 end))
 
@@ -1443,7 +1434,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 				..string.patescape'typedef union SDL_Event SDL_Event;',
 
 				-- simultaneously insert require to ffi/sdl.lua
-				"]] require 'ffi.sdl' ffi.cdef[["
+				"]] require 'ffi.req' 'sdl' ffi.cdef[["
 			)
 			code = remove_need_macro(code)
 
@@ -1466,7 +1457,7 @@ return require 'ffi.load' 'cimgui_sdl'
 
 			-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
 			-- so fix it here:
-			code = code:gsub(string.patescape"]] require 'ffi.OpenCL' ffi.cdef[[\n", "")
+			code = code:gsub(string.patescape"]] require 'ffi.req' 'OpenCL' ffi.cdef[[\n", "")
 
 			code = code .. [[
 return require 'ffi.load' 'OpenCL'
@@ -1485,7 +1476,6 @@ return require 'ffi.load' 'OpenCL'
 	{
 		inc = '<tiffio.h>',
 		out = ffi.os..'/tiff.lua',
-		forceSplit = true,
 		os = ffi.os,
 		flags = string.trim(io.readproc'pkg-config --cflags libtiff-4'),
 		final = function(code)
@@ -1501,7 +1491,6 @@ return require 'ffi.load' 'OpenCL'
 	{
 		inc = '<jpeglib.h>',
 		out = ffi.os..'/jpeg.lua',
-		forceSplit = true,
 		os = ffi.os,
 		final = function(code)
 			code = [[
@@ -1538,7 +1527,6 @@ require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <
 		moreincs = {'<GL/glext.h>'},
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
-		forceSplit = true,
 		os = ffi.os,
 		final = function(code)
 			code = code .. [[
@@ -1659,7 +1647,6 @@ return require 'ffi.load' 'SDL2'
 		-- build this separately for each OS.
 		-- generate the os splitter file
 		out = ffi.os..'/ogg.lua',
-		forceSplit = true,
 		os = ffi.os,
 	},
 
@@ -1816,8 +1803,6 @@ for incname, det in pairs(detectDups) do
 		local keys = table.keys(det)
 		-- if we had more than 1 key
 		if #keys > 1
-		-- or if any had 'forceSplit' set
-		or table(table.map(det, function(v,k,t) return v, #t+1 end):unpack()).forceSplit
 		then
 			local base
 			for os,inc in pairs(det) do
@@ -1832,7 +1817,7 @@ for incname, det in pairs(detectDups) do
 					assert(incbase == base, "for split file, assumed output is [os]/[path] ,but didn't get it for "..tolua(inc))
 				end
 			end
-			-- [[ add in the split file
+--[=[ add in the split file
 			includeList:insert{
 				inc = incname,
 				out = base,
@@ -1850,9 +1835,10 @@ end
 						:gsub('/', '.')),
 				})
 			}
-			--]]
+--]=]
 		end
 	end
 end
+
 
 return includeList

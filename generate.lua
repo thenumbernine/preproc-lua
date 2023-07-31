@@ -25,8 +25,6 @@ includeList = includeList:filter(function(inc)
 	return true
 end)
 
-local includeListRev = includeList:reverse()
-
 -- 1) store the search => found include names, then
 function ThisPreproc:getIncludeFileCode(fn, search, sys)
 	self.mapFromIncludeToSearchFile
@@ -67,7 +65,7 @@ function ThisPreproc:__call(...)
 --newlines:insert('/* ... is already in the generate.lua args */')
 					else
 						-- if it's found in includeList then ...
-						local _, inc = includeListRev:find(nil, function(o)
+						local _, inc = includeList:find(nil, function(o)
 							-- if we're including a system file then it could be <> or ""
 							if search:sub(1,1) == '"' then
 								return o.inc:sub(2,-2) == search:sub(2,-2)
@@ -90,7 +88,7 @@ function ThisPreproc:__call(...)
 			-- find the end
 			local endfile = l:match'^/%* %+* END   (.*) %*/$'
 			if endfile and endfile == currentfile then
-				newlines:insert("]] require 'ffi."..currentluainc.."' ffi.cdef[[")
+				newlines:insert("]] require 'ffi.req' '"..currentluainc.."' ffi.cdef[[")
 				-- clear state
 				currentfile = nil
 				currentluainc = nil

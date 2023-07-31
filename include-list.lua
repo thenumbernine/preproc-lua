@@ -731,6 +731,26 @@ ffi.arch == 'x86' and {
 	-- needed by png.h
 	{inc='<setjmp.h>', out='Windows/c/setjmp.lua'},
 
+	-- not in windows, but I have a fake for aliasing, so meh
+	{
+		inc = '<unistd.h>',
+		out = 'Windows/c/unistd.lua',
+		forcecode = [=[
+local ffi = require 'ffi'
+require 'ffi.Windows.c.direct'  -- get our windows defs
+local lib = ffi.C
+-- TODO I see the orig name prototypes in direct.h ...
+-- ... so do I even need the Lua alias anymore?
+return setmetatable({
+	chdir = lib._chdir,
+	getcwd = lib._getcwd,
+	rmdir = lib._rmdir,
+}, {
+	__index = lib,
+})
+]=]
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc

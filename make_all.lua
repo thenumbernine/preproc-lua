@@ -121,7 +121,7 @@ ffi.cdef[[
 		print(exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
 		--]=]
 		-- [=[ use require, and base it in the output folder
-		print(exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.]]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
+		print(exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.req' ']]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
 		--]=]
 	end
 end

@@ -584,7 +584,7 @@ return setmetatable({
 			-- windows help says "always include sys/types.h first"
 			-- ... smh why couldn't they just include it themselves?
 			code = [[
-require 'ffi.c.sys.types'
+require 'ffi.req' 'c.sys.types'
 ]] .. code
 			code = code .. [=[
 ffi.cdef[[
@@ -1055,7 +1055,7 @@ enum { WCHAR_MAX = 2147483647 };
 -- I can't change ffi.C.getcwd to ffi.C._getcwd in the case of Windows
 local lib = ffi.C
 if ffi.os == 'Windows' then
-	require 'ffi.c.direct'	-- get our windows defs
+	require 'ffi.req' 'c.direct'	-- get our windows defs
 	return setmetatable({
 		chdir = lib._chdir,
 		getcwd = lib._getcwd,
@@ -1494,7 +1494,7 @@ return require 'ffi.load' 'OpenCL'
 		os = ffi.os,
 		final = function(code)
 			code = [[
-require 'ffi.c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
+require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
 ]] .. code
 			return code
 		end,
@@ -1673,7 +1673,7 @@ local lib = require 'ffi.load' 'vorbisfile'
 -- browser will have to shim each of he OV_CALLBACKs
 -- ... or browser should/will have to return ffi closures of ffi.open
 -- ... then we can use stdio here
-local stdio = require 'ffi.c.stdio'	-- fopen, fseek, fclose, ftell
+local stdio = require 'ffi.req' 'c.stdio'	-- fopen, fseek, fclose, ftell
 
 -- i'd free the closure but meh
 -- who puts a function as a static in a header anyways?

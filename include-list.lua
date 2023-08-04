@@ -139,8 +139,6 @@ includeList:append(table{
 
 	{inc='<corecrt_wdirect.h>', out='Windows/c/corecrt_wdirect.lua'},
 
-	{inc='<corecrt_wstdio.h>', out='Windows/c/corecrt_wstdio.lua'},
-
 	{
 		inc = '<corecrt_stdio_config.h>',
 		out = 'Windows/c/corecrt_stdio_config.lua',
@@ -154,6 +152,9 @@ includeList:append(table{
 			return code
 		end,
 	},
+
+	-- depends: corecrt_stdio_config.h
+	{inc='<corecrt_wstdio.h>', out='Windows/c/corecrt_wstdio.lua'},
 
 	-- uses corecrt_share.h
 	{
@@ -468,86 +469,6 @@ return setmetatable({
 		inc = '<stdio.h>',
 		out = 'Windows/c/stdio.lua',
 		final = function(code)
-			-- TODO some of these look useful.
-			-- that means I'll have to re-add the mapping in final()
-			for _,f in ipairs{
-				'_vfprintf_l',
-				'vfprintf',
-				'_vfprintf_s_l',
-				'_vfprintf_p_l',
-				'_vfprintf_p',
-				'_vprintf_l',
-				'vprintf',
-				'_vprintf_s_l',
-				'_vprintf_p_l',
-				'_vprintf_p',
-				'_fprintf_l',
-				'fprintf',
-				'_fprintf_s_l',
-				'_fprintf_p_l',
-				'_fprintf_p',
-				'_printf_l',
-				'printf',
-				'_printf_s_l',
-				'_printf_p_l',
-				'_printf_p',
-				'_vfscanf_l',
-				'vfscanf',
-				'_vfscanf_s_l',
-				'_vscanf_l',
-				'vscanf',
-				'_vscanf_s_l',
-				'_fscanf_l',
-				'fscanf',
-				'_fscanf_s_l',
-				'_scanf_l',
-				'scanf',
-				'_scanf_s_l',
-				'_vsnprintf_l',
-				'_vsnprintf',
-				'vsnprintf',
-				'_vsprintf_l',
-				'vsprintf',
-				'_vsprintf_s_l',
-				'_vsprintf_p_l',
-				'_vsprintf_p',
-				'_vsnprintf_s_l',
-				'_vsnprintf_s',
-				'_vscprintf_l',
-				'_vscprintf',
-				'_vscprintf_p_l',
-				'_vscprintf_p',
-				'_vsnprintf_c_l',
-				'_vsnprintf_c',
-				'_sprintf_l',
-				'sprintf',
-				'_sprintf_s_l',
-				'_sprintf_p_l',
-				'_sprintf_p',
-				'_snprintf_l',
-				'snprintf',
-				'_snprintf',
-				'_snprintf_c_l',
-				'_snprintf_c',
-				'_snprintf_s_l',
-				'_snprintf_s',
-				'_scprintf_l',
-				'_scprintf',
-				'_scprintf_p_l',
-				'_scprintf_p',
-				'_vsscanf_l',
-				'vsscanf',
-				'_vsscanf_s_l',
-				'_sscanf_l',
-				'sscanf',
-				'_sscanf_s_l',
-				'_snscanf_l',
-				'_snscanf',
-				'_snscanf_s_l',
-				'_snscanf_s',
-			} do
-				code = removeInlineFunction(code, f)
-			end
 			-- return ffi.C so it has the same return behavior as Linux/c/stdio
 			code = code .. [[
 local lib = ffi.C
@@ -557,6 +478,7 @@ return setmetatable({
 	__index = ffi.C,
 })
 ]]
+			return code
 		end,
 	},
 
@@ -727,7 +649,7 @@ ffi.arch == 'x86' and {
 		inc = '<stdlib.h>',
 		out = 'Windows/c/stdlib.lua',
 	},
-	
+
 	-- needed by png.h
 	{inc='<setjmp.h>', out='Windows/c/setjmp.lua'},
 

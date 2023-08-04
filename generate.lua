@@ -88,6 +88,14 @@ function ThisPreproc:__call(...)
 			-- find the end
 			local endfile = l:match'^/%* %+* END   (.*) %*/$'
 			if endfile and endfile == currentfile then
+				-- hmm dilemma here
+				-- currentluainc says where to write the file, which is in $os/$path or $os/$arch/$path or just $path depending on the level of overriding ...
+				-- but the ffi.req *here* needs to just be $path
+				-- but no promises of what the name scheme will be
+				-- (TODO unless I include this info in the include-list.lua ... .specificdir or whatever...)
+				-- so for now i'll just match
+				currentluainc = currentluainc:match('^'..string.patescape(ffi.os)..'%.(.*)$') or currentluainc
+				currentluainc = currentluainc:match('^'..string.patescape(ffi.arch)..'%.(.*)$') or currentluainc
 				newlines:insert("]] require 'ffi.req' '"..currentluainc.."' ffi.cdef[[")
 				-- clear state
 				currentfile = nil
@@ -189,6 +197,41 @@ if ffi.os == 'Windows' then
 
 #define _WIN32	1
 #define _WIN64	1
+
+// used in the following to prevent inline functions ...
+//	ucrt/corecrt_stdio_config.h
+//	ucrt/corecrt_wstdio.h
+//	ucrt/stdio.h
+//	ucrt/corecrt_wconio.h
+//	ucrt/conio.h
+#define _NO_CRT_STDIO_INLINE 1
+
+// This one is linked to inline functions (and other stuff maybe?)
+// in a few more files...
+//	ucrt/corecrt.h
+//	ucrt/corecrt_io.h
+//	ucrt/corecrt_math.h
+//	ucrt/corecrt_startup.h
+//	ucrt/corecrt_stdio_config.h
+//	ucrt/corecrt_wprocess.h
+//	ucrt/corecrt_wstdio.h
+//	ucrt/corecrt_wstdlib.h
+//	ucrt/direct.h
+//	ucrt/dos.h
+//	ucrt/errno.h
+//	ucrt/fenv.h
+//	ucrt/locale.h
+//	ucrt/mbctype.h
+//	ucrt/mbstring.h
+//	ucrt/process.h
+//	ucrt/stddef.h
+//	ucrt/stdio.h
+//	ucrt/stdlib.h
+//	ucrt/wchar.h
+// For now I'm only going to rebuild stdio.h and its dependencies with this set to 0
+// maybe it'll break other headers? idk?
+//#define _CRT_FUNCTIONS_REQUIRED 0
+// hmm, nope, this gets rid of all the stdio stuff
 
 // <vcruntime.h> has these: (I'm skipping it for now)
 #define _VCRTIMP

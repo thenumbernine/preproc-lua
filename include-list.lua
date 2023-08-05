@@ -1539,6 +1539,9 @@ return require 'ffi.load' 'lapacke'
 
 	-- libzip-dev
 	-- TODO #define ZIP_OPSYS_* is hex values, should be enums, but they are being commented out ...
+	-- because they have 'u' suffixes
+	-- same with some other windows #defines
+	-- any that have u i etc i32 i64 etc are being failed by my parser.
 	{inc='<zip.h>', out='zip.lua', final=function(code)
 		code = code .. [[
 return require 'ffi.load' 'zip'

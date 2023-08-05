@@ -131,8 +131,9 @@ local includeList = table()
 -- [====[ Begin Windows-specific:
 -- TODO this is most likely going to be come Windows/x64/ files in the future
 includeList:append(table{
-
 -- Windows-only:
+	{inc='<vcruntime_string.h>', out='Windows/c/vcruntime_string.lua'},
+
 	{inc='<corecrt.h>', out='Windows/c/corecrt.lua'},
 
 	{inc='<corecrt_share.h>', out='Windows/c/corecrt_share.lua'},
@@ -156,7 +157,7 @@ includeList:append(table{
 	-- depends: corecrt_stdio_config.h
 	{inc='<corecrt_wstdio.h>', out='Windows/c/corecrt_wstdio.lua'},
 
-	-- uses corecrt_share.h
+	-- depends: corecrt_share.h
 	{
 		inc = '<corecrt_wio.h>',
 		out = 'Windows/c/corecrt_wio.lua',
@@ -167,6 +168,7 @@ includeList:append(table{
 		end,
 	},
 
+	-- depends: vcruntime_string.h
 	{inc='<corecrt_wstring.h>', out='Windows/c/corecrt_wstring.lua'},
 
 	{inc='<corecrt_wstdlib.h>', out='Windows/c/corecrt_wstdlib.lua'},
@@ -236,7 +238,7 @@ typedef intptr_t ssize_t;
 		out = 'Windows/c/errno.lua',
 	},
 
-	-- depends on: errno.h corecrt_wstring.h
+	-- depends on: errno.h corecrt_wstring.h vcruntime_string.h
 	{
 		inc = '<string.h>',
 		out = 'Windows/c/string.lua',
@@ -293,7 +295,7 @@ return setmetatable({
 		end,
 	},
 
-	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h corecrt_wdirect.h corecrt_stdio_config.h corecrt_wtime.h
+	-- depends on: errno.h corecrt_wio.h corecrt_wstring.h corecrt_wdirect.h corecrt_stdio_config.h corecrt_wtime.h vcruntime_string.h
 	{
 		inc = '<wchar.h>',
 		out = 'Windows/c/wchar.lua',

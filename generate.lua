@@ -233,6 +233,11 @@ if ffi.os == 'Windows' then
 //#define _CRT_FUNCTIONS_REQUIRED 0
 // hmm, nope, this gets rid of all the stdio stuff
 
+// hmm this is used in vcruntime_string.h
+// but it's defined in corecrt.h
+// and vcruntime_string.h doesn't include corecrt.h .......
+#define _CONST_RETURN const
+
 // <vcruntime.h> has these: (I'm skipping it for now)
 #define _VCRTIMP
 #define _CRT_BEGIN_C_HEADER
@@ -288,7 +293,7 @@ if ffi.os == 'Windows' then
 	--]=]
 
 	skipfiles:insert'<vcruntime.h>'
-	--skipfiles:insert'<vcruntime_string.h>'	-- has memcpy ... why did I remove this?
+	--skipfiles:insert'<vcruntime_string.h>'	-- has memcpy ... wonder why did I remove this?
 	--skipfiles:insert'<corecrt_memcpy_s.h>'	-- contains inline functions
 
 	-- how to know where these are?

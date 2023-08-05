@@ -182,32 +182,55 @@ includeList:append(table{
 		inc = '<time.h>',
 		out = 'Windows/c/time.lua',
 		final = function(code)
-			code = removeStaticFunction(code, '_wctime')
-			code = removeStaticFunction(code, '_wctime_s')
-			code = removeStaticFunction(code, 'ctime')
-			code = removeStaticFunction(code, 'difftime')
-			code = removeStaticFunction(code, 'gmtime')
-			code = removeStaticFunction(code, 'localtime')
-			code = removeStaticFunction(code, '_mkgmtime')
-			code = removeStaticFunction(code, 'mktime')
-			code = removeStaticFunction(code, 'time')
-			code = removeStaticFunction(code, 'timespec_get')
+			for _,f in ipairs{
+				'_wctime',
+				'_wctime_s',
+				'ctime',
+				'difftime',
+				'gmtime',
+				'localtime',
+				'_mkgmtime',
+				'mktime',
+				'time',
+				'timespec_get',
+			} do
+				code = removeStaticFunction(code, f)
+			end
 			-- add these static inline wrappers as lua wrappers
+			-- TODO pick between 32 and 64 based on arch
 			code = code .. [[
-return setmetatable({
-	_wctime = ffi.C._wctime64,
-	_wctime_s = ffi.C._wctime64_s,
-	ctime = _ctime64,
-	difftime = _difftime64,
-	gmtime = _gmtime64,
-	localtime = _localtime64,
-	_mkgmtime = _mkgmtime64,
-	mktime = _mktime64,
-	time = _time64,
-	timespec_get = _timespec_get64,
-}, {
-	__index = ffi.C,
-})
+local lib = ffi.C
+if ffi.arch == 'x86' then
+	return setmetatable({
+		_wctime = lib._wctime32,		-- in corecrt_wtime.h
+		_wctime_s = lib._wctime32_s,		-- in corecrt_wtime.h
+		ctime = _ctime32,
+		difftime = _difftime32,
+		gmtime = _gmtime32,
+		localtime = _localtime32,
+		_mkgmtime = _mkgmtime32,
+		mktime = _mktime32,
+		time = _time32,
+		timespec_get = _timespec32_get,
+	}, {
+		__index = lib,
+	})
+elseif ffi.arch == 'x64' then
+	return setmetatable({
+		_wctime = lib._wctime64,		-- in corecrt_wtime.h
+		_wctime_s = lib._wctime64_s,		-- in corecrt_wtime.h
+		ctime = _ctime64,
+		difftime = _difftime64,
+		gmtime = _gmtime64,
+		localtime = _localtime64,
+		_mkgmtime = _mkgmtime64,
+		mktime = _mktime64,
+		time = _time64,
+		timespec_get = _timespec64_get,
+	}, {
+		__index = lib,
+	})
+end
 ]]
 			return code
 		end,

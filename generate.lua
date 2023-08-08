@@ -252,6 +252,10 @@ if ffi.os == 'Windows' then
 #define _CRT_DEPRECATE_TEXT(_Text)
 #define _VCRT_ALIGN(x) __declspec(align(x))
 
+// used by stdint.h to produce some macros (which are all using non-standard MS-specific suffixes so my preproc comments them out anyways)
+// these suffixes also appearn in limits.h
+// not sure where else _VCRT_COMPILER_PREPROCESSOR appears tho
+#define _VCRT_COMPILER_PREPROCESSOR 1
 
 // in corecrt.h but can be overridden
 // hopefully this will help:

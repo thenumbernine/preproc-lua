@@ -532,8 +532,12 @@ ffi.arch == 'x86' and {
 	-- unless I enable _VCRT_COMPILER_PREPROCESSOR , this file is empty
 	-- maybe it shows up elsewhere?
 	-- hmm but if I do, my preproc misses almost all the number defs
-	-- becaus they use suffixes i8, i16, i32, i64, ui8, ui16, ui32, ui64
+	-- because they use suffixes i8, i16, i32, i64, ui8, ui16, ui32, ui64
+	-- (hmm similar but different set of macros are in limits.h)
 	-- but the types it added ... int8_t ... etc ... are alrady buitin to luajit?
+	-- no they are microsoft-specific:
+	-- https://stackoverflow.com/questions/33659846/microsoft-integer-literal-extensions-where-documented
+	-- so this means replace them wherever possible.
 	{
 		inc = '<stdint.h>',
 		out = 'Windows/c/stdint.lua',

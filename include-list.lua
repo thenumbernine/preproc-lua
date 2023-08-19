@@ -1393,9 +1393,24 @@ require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never incl
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,
 		final = function(code)
-			code = code .. [[
+			if ffi.os == 'Windows' then
+				-- TODO this won't work now that I'm separating out KHRplatform.h ...
+				code = "local code = ''"
+				code = code:gsub(
+					string.patescape'ffi.cdef',
+					'code = code .. '
+				)
+				code = code .. [[
+local gl = require 'ffi.load' 'GL'
+return setmetatable({
+	code = code,	-- Windows GLApp needs to be able to read the ffi.cdef string for parsing out wglGetProcAddress's
+}, {__index=gl})
+]]
+			else
+				code = code .. [[
 return require 'ffi.load' 'GL'
 ]]
+			end
 			return code
 		end,
 	},

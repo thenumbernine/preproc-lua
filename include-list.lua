@@ -1313,15 +1313,14 @@ return require 'ffi.load' 'cimgui_sdl'
 	},
 
 	{
-		inc = '<CL/cl.h>',
-		moreincs = {'<CL/cl_gl.h>'},
+		inc = '<CL/opencl.h>',
 		out = 'OpenCL.lua',
 		final = function(code)
 			code = commentOutLine(code, 'warning: Need to implement some method to align data here')
 
 			-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
 			-- so fix it here:
-			code = code:gsub(string.patescape"]] require 'ffi.req' 'OpenCL' ffi.cdef[[\n", "")
+			--code = code:gsub(string.patescape"]] require 'ffi.req' 'OpenCL' ffi.cdef[[\n", "")
 
 			code = code .. [[
 return require 'ffi.load' 'OpenCL'

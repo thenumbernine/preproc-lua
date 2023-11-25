@@ -42,8 +42,8 @@ local outdir = outdirbase..'/ffi'
 for _,inc in ipairs(includeList) do
 	if not inc.dontGen then
 		local outpath = outdir..'/'..inc.out
-		local dir,outfn = path(outpath):getdir()
-		path(dir):mkdir(true)
+		local dir, outfn = path(outpath):getdir()
+		dir:mkdir(true)
 		
 		if inc.forcecode then
 			-- just write it , proly a split between dif os versions

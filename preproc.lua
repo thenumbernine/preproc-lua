@@ -1407,7 +1407,7 @@ function Preproc:__call(args)
 								local dir, prevfn = path(includeNextFile):getdir()
 --print(includeNextFile, dir, prevfn)
 								if prevfn == fn then
-									foundPrevIncludeDir = dir
+									foundPrevIncludeDir = dir.path
 									break
 								end
 							end

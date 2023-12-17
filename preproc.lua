@@ -1406,7 +1406,7 @@ function Preproc:__call(args)
 								local includeNextFile = self.includeStack[i]
 								local dir, prevfn = path(includeNextFile):getdir()
 --print(includeNextFile, dir, prevfn)
-								if prevfn == fn then
+								if prevfn.path == fn then
 									foundPrevIncludeDir = dir.path
 									break
 								end

@@ -2108,7 +2108,7 @@ return require 'ffi.load' 'png'
 			-- warning: redefining __MATH_DECLARING_FLOATN from 0 to 1 (originally 1)
 			code = removeWarnings(code)
 
-			code = code:gsub('enum { _begin_code_h = 1 };', '')
+			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
 
 			code = code .. [[
 return require 'ffi.load' 'SDL2'

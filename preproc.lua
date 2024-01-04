@@ -4,6 +4,8 @@ local tolua = require 'ext.tolua'
 local path = require 'ext.path'
 local class = require 'ext.class'
 
+local has_ffi, ffi = pcall(require, 'ffi')
+
 local namepat = '[_%a][_%w]*'
 
 local function isvalidsymbol(s)
@@ -112,13 +114,13 @@ end
 function Preproc:getDefineCode(k, v, l)
 --print('getDefineCode setting '..k..' to '..tolua(v))
 	self.macros[k] = v
-	
+
 	if type(v) == 'string' then	-- exclude the arg-based macros from this -- they will have table values
-		
+
 		-- try to evaluate the value
 		-- TODO will this mess with incomplete macros
 		--v = self:replaceMacros(v)
-	
+
 		-- ok if it's a preprocessor expression then we need it evaluated
 		-- but it could be a non-preproc expression as well, in which case maybe it's a float?
 		local origv = v
@@ -127,22 +129,39 @@ function Preproc:getDefineCode(k, v, l)
 			-- parseCondExpr returns bool
 		end)
 
+		local vnumstr, vnum
+		for _,suffix in ipairs{'', 'u', 'l', 'z', 'ul', 'uz', 'll', 'ull'} do
+			vnumstr = v:match('(.*)'..suffix..'$')
+			-- TODO optional 's for digit separtors
+			vnum = tonumber(vnumstr)
+			if vnum then
+-- ... extra check to verify that this is in fact an enum?
+				LASTENUMCHECK = (LASTENUMCHECK or 0) + 1
+				-- sometimes it will still fail ... like if it's a 64-bit value ... but I don't want to throw out u ul ull etc suffixes immediately, in case the value associated can still fit inside 32 bits ...
+				if has_ffi and not pcall(ffi.cdef, "enum { ENUMCHECK"..LASTENUMCHECK.." = "..vnum.." }") then
+					vnum = nil
+					vnumstr = nil
+				end
+				break
+			end
+		end
+
 		-- if the value string is a number define
-		local isnumber = tonumber(v)	-- TODO also check valid suffixes? l L etc
+		local isnumber = vnum
 		if isnumber then
 			-- ok Lua tonumber hack ...
 			-- tonumber'0x10' converts from base 16 ..
 			-- tonumber'010' converts from base 10 *NOT* base 8 ...
 --print('line was', l)
 			local replaceline
-			
+
 			local oldv = self.generatedEnums[k]
 			if oldv then
 				if oldv ~= v then
 					print('/* WARNING: redefining '..k..' from '..tostring(oldv)..' to '..tostring(v).. ' (originally '..tostring(origv)..') */')
 					-- redefine the enum value as well?
 					-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
-				
+
 					replaceline = true
 				else
 					return '/* redefining matching value: '..l..' */'
@@ -151,7 +170,7 @@ function Preproc:getDefineCode(k, v, l)
 				replaceline = true
 			end
 			self.generatedEnums[k] = v
-		
+
 			if replaceline then
 				assert(type(v) == 'string')
 				-- [[ insert in-place? this will cause a luajit error
@@ -179,7 +198,7 @@ function Preproc:getDefineCode(k, v, l)
 -- non-strings are most likely nil for undef or tables for arg macros
 --		return '/* '..l..' ### '..tolua(v, {indent=false})..' */'
 	end
-		
+
 	return ''
 end
 
@@ -217,7 +236,7 @@ end
 function Preproc:searchForInclude(fn, sys, startHere)
 	local includeDirs = sys
 		and self.sysIncludeDirs
-		
+
 		--[[
 		seems "" searches also check <> search paths
 		but do <> searches also search "" search paths?
@@ -225,7 +244,7 @@ function Preproc:searchForInclude(fn, sys, startHere)
 		--]]
 		--or self.userIncludeDirs
 		or table():append(self.userIncludeDirs, self.sysIncludeDirs)
-	
+
 	local startIndex
 	if startHere then
 --print('searching '..tolua(includeDirs))
@@ -265,7 +284,7 @@ function Preproc:handleMacroWithArgs(l, key, vparams)
 
 	local keyj,keyk = l:find(key)
 	if not keyj then return end
-	
+
 	local beforekey = l:sub(keyj-1,keyj-1)
 	local afterkey = l:sub(keyk+1,keyk+1)
 	if beforekey:match'[_a-zA-Z0-9]'
@@ -316,7 +335,7 @@ EDABC(x)
 
 --print('found macro', key)
 --print('replacing from params '..tolua(vparams))
-	
+
 	local paramStr = l:sub(j,k):match(pat)
 	paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
 --print('found paramStr', paramStr)
@@ -359,7 +378,7 @@ EDABC(x)
 --print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
 		paramMap[macrokey] = paramvalue
 	end
-	
+
 	assert(paramIndex == #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
 
 	return j, k, paramMap
@@ -734,7 +753,7 @@ end
 
 function Preproc:parseCondInt(origexpr)
 	local expr = origexpr
-	
+
 	assert(expr)
 --print('evaluating condition:', expr)
 	-- does defined() work with macros with args?
@@ -890,7 +909,7 @@ function Preproc:parseCondInt(origexpr)
 				mustbe'%)'
 --print('got', tolua(result))
 				return node
-			
+
 			-- have to handle 'defined' without () because it takes an implicit 1st arg
 			elseif canbe'defined' then
 				local name = mustbe(namepat)
@@ -995,7 +1014,7 @@ function Preproc:parseCondInt(origexpr)
 			end
 			return a
 		end
-	
+
 		local function level6()
 			local a = level7()
 			if canbe'&'
@@ -1095,7 +1114,7 @@ function Preproc:parseCondInt(origexpr)
 			..err..'\n'..debug.traceback()
 	end)
 	if rethrow then error(rethrow) end
-	
+
 	return cond
 end
 
@@ -1169,7 +1188,7 @@ function Preproc:__call(args)
 				if l:sub(1,1) == '#' then
 					local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
 --print('cmd is', cmd, 'rest is', rest)
-					
+
 					local function closeIf()
 						assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
 						ifstack:remove()
@@ -1181,7 +1200,7 @@ function Preproc:__call(args)
 							if k then
 								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --print('defining with params',k,params,paramdef)
-								
+
 	-- [[ what if we're defining a macro with args?
 	-- at this point I probably need to use a parser on #if evaluations
 								local paramstr = params
@@ -1192,13 +1211,13 @@ function Preproc:__call(args)
 								for i,param in ipairs(params) do
 									assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name: "..tostring(param))
 								end
-							
+
 								lines[i] = self:getDefineCode(k, {
 									params = params,
 									def = paramdef,
 								}, l)
 							else
-							
+
 								local k, v = rest:match'^(%S+)%s+(.-)$'
 								if k then
 									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
@@ -1216,7 +1235,7 @@ function Preproc:__call(args)
 									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --print('defining empty',k,v)
 								end
-								
+
 								--TODO lines[i] = ...
 								-- and then incorporate the enim {} into the code
 								lines[i] = self:getDefineCode(k, v, l)
@@ -1264,7 +1283,7 @@ function Preproc:__call(args)
 						end
 --print('got cond', cond, 'from', rest)
 						ifstack:insert{cond, hasprocessed}
-						
+
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'else' then
@@ -1281,7 +1300,7 @@ function Preproc:__call(args)
 						local cond = not not self.macros[rest]
 --print('got cond', cond)
 						ifstack:insert{cond, false}
-						
+
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'ifndef' then
@@ -1290,7 +1309,7 @@ function Preproc:__call(args)
 						local cond = not self.macros[rest]
 --print('got cond', cond)
 						ifstack:insert{cond, false}
-						
+
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'endif' then
@@ -1342,7 +1361,7 @@ function Preproc:__call(args)
 							if not fn then
 								error("include expected file: "..l)
 							end
-						
+
 							local search = fn
 							fn = self:searchForInclude(fn, sys)
 							if not fn then
@@ -1360,21 +1379,21 @@ function Preproc:__call(args)
 							if not self.alreadyIncludedFiles[fn] then
 --print('include '..fn)
 								lines:insert(i, '/* '..('+'):rep(#self.includeStack+1)..' END   '..fn..' */')
-								
-								
+
+
 								-- TODO not sure how I want to do this
 								-- but I want my include-lua project to be able to process certain dependent headers in advance
 								-- though not all ... only ones that are not dependent on the current preproc state (i.e. the system files)
 								-- so this is a delicate mess.
 								local newcode = self:getIncludeFileCode(fn, search, sys)
-								
+
 								newcode = Preproc.removeCommentsAndApplyContinuations(newcode)
 								local newlines = string.split(newcode, '\n')
-								
+
 								while #newlines > 0 do
 									lines:insert(i, newlines:remove())
 								end
-								
+
 								self.includeStack:insert(fn)
 								lines:insert(i, '/* '..('+'):rep(#self.includeStack)..' BEGIN '..fn..' */')
 								i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
@@ -1397,7 +1416,7 @@ function Preproc:__call(args)
 							if not fn then
 								error("include expected file: "..l)
 							end
-						
+
 							local search = fn
 --print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
 							-- search through the include stack for the most recent file with the name of what we're looking for ...
@@ -1414,7 +1433,7 @@ function Preproc:__call(args)
 --print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
 							-- and if we didn't find it, just use nil, and searchForInclude will do a regular search and get the first option
 							fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
-							
+
 							if not fn then
 								io.stderr:write('sys '..tostring(sys)..'\n')
 								if sys then
@@ -1435,18 +1454,18 @@ function Preproc:__call(args)
 
 								newcode = Preproc.removeCommentsAndApplyContinuations(newcode)
 								local newlines = string.split(newcode, '\n')
-								
+
 								while #newlines > 0 do
 									lines:insert(i, newlines:remove())
 								end
-							
+
 								self.includeStack:insert(fn)
 								lines:insert(i, '/* '..('+'):rep(#self.includeStack)..' BEGIN '..fn..' */')
 								i=i+1	-- don't process the BEGIN comment ... I guess we'll still hit the END comment ...
 							end
 						end
 						i = i - 1
-				
+
 					elseif cmd == 'pragma' then
 						if eval then
 							if rest == 'once' then
@@ -1495,7 +1514,7 @@ function Preproc:__call(args)
 							i = i + 1
 							l = prevIncompleteMacroLine .. ' ' .. l
 						end
-						
+
 						local nl = self:replaceMacros(l)
 						if self.foundIncompleteMacroLine then
 							--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')

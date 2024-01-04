@@ -770,11 +770,18 @@ return setmetatable({
 		end
 		code = code .. [[
 local lib = ffi.C
-return setmetatable({
+local statlib = setmetatable({
 	struct_stat = 'struct stat',
 }, {
 	__index = lib,
 })
+-- allow nils instead of errors if we access fields not present (for the sake of lfs_ffi)
+ffi.metatype(statlib.struct_stat, {
+	__index = function(t,k)
+		return nil
+	end,
+})
+return statlib
 ]]
 		return code
 	end},
@@ -1954,6 +1961,20 @@ return require 'ffi.load' 'OpenCL'
 			code = [[
 require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
 ]] .. code
+			code = code .. [[
+local lib = require 'ffi.load' 'jpeg'
+-- these are #define's in jpeglib.h
+return setmetatable({
+	jpeg_create_compress = function(cinfo)
+		return lib.jpeg_CreateCompress(cinfo, lib.JPEG_LIB_VERSION, ffi.sizeof('struct jpeg_compress_struct'))
+	end,
+	jpeg_create_decompress = function(cinfo)
+		return lib.jpeg_CreateDecompress(cinfo, lib.JPEG_LIB_VERSION, ffi.sizeof('struct jpeg_decompress_struct'))
+	end
+}, {
+	__index = lib,
+})
+]]
 			return code
 		end,
 		ffiload = {

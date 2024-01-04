@@ -22,7 +22,12 @@ local tolua = require 'ext.tolua'
 -- that way as versions increment I can know which filters are no longer needed.
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-	return (code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', ''))
+	local n
+	code, n = code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', '')
+	if n == 0 then
+		io.stderr:write('remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION unnecessary\n')
+	end
+	return code
 end
 
 -- TODO maybe ffi.Linux.c.bits.types instead
@@ -30,40 +35,61 @@ end
 -- i've separated it into its own file myself, so it has to be manually replaced
 -- same is true for a few other types
 local function replace_bits_types_builtin(code, ctype)
-	code = code:gsub(string.patescape([[
+	local n
+	code, n = code:gsub(string.patescape([[
 typedef __]]..ctype..[[ ]]..ctype..[[;
 enum { __]]..ctype..[[_defined = 1 };]]),
 		[=[]] require 'ffi.req' 'c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
 	)
+	if n == 0 then
+		io.stderr:write('replace_bits_types_builtin_code '..ctype..' unnecessary\n')
+	end
 	return code
 end
 
 local function remove_need_macro(code)
-	code = code:gsub('enum { __need_[_%w]* = 1 };\n', '')
+	local n
+	code, n = code:gsub('enum { __need_[_%w]* = 1 };\n', '')
+	if n == 0 then
+		io.stderr:write('remove_need_macro unnecessary\n')
+	end
 	return code
 end
 
 -- _VA_LIST_DEFINED and va_list don't appear next to each other like the typical bits_types_builtin do
 local function remove_VA_LIST_DEFINED(code)
-	code = code:gsub('enum { _VA_LIST_DEFINED = 1 };\n', '')
+	local n
+	code, n = code:gsub('enum { _VA_LIST_DEFINED = 1 };\n', '')
+	if n == 0 then
+		io.stderr:write('remove_VA_LIST_DEFINED unnecessary\n')
+	end
 	return code
 end
 
 local function replace_va_list_require(code)
-	code = code:gsub(
+	local n
+	code, n = code:gsub(
 		'typedef __gnuc_va_list va_list;',
 		[=[]] require 'ffi.req' 'c.va_list' ffi.cdef[[]=]
 	)
+	if n == 0 then
+		io.stderr:write('replace_va_list_require unnecessary\n')
+	end
 	return code
 end
 
 -- unistd.h and stdio.h both define SEEK_*, so ...
 local function replace_SEEK(code)
-		return code:gsub([[
+	local n
+	code, n = code:gsub([[
 enum { SEEK_SET = 0 };
 enum { SEEK_CUR = 1 };
 enum { SEEK_END = 2 };
 ]], "]] require 'ffi.req' 'c.bits.types.SEEK' ffi.cdef[[\n")
+	if n == 0 then
+		io.stderr:write('replace_SEEK unnecessary\n')
+	end
+	return code
 end
 
 -- TODO keeping warnings as comments seems nice
@@ -71,13 +97,52 @@ end
 --  which runs the risk of bumping the first line skip of BEGIN ...
 --  which could replcae the whole file with a require()
 local function removeWarnings(code)
-	return code:gsub('warning:[^\n]*\n', '')
+	local n
+	code, n = code:gsub('warning:[^\n]*\n', '')
+	if n == 0 then
+		io.stderr:write('removeWarnings unnecessary\n')
+	end
+	return code
 end
 
 local function commentOutLine(code, line)
-	code = code:gsub(
+	local n
+	code, n = code:gsub(
 		string.patescape(line),
 		'/* manually commented out: '..line..' */')
+	if n == 0 then
+		io.stderr:write('commentOutLine '..line..' unnecessary\n')
+	end
+	return code
+end
+
+-- ok with {.-} it fails on funcntions that have {}'s in their body, like wmemset
+-- so lets try %b{}
+-- TODO name might have a * before it instead of a space...
+local function removeStaticFunction(code, name)
+	local n
+	code, n = code:gsub('static%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
+	if n == 0 then
+		io.stderr:write('removeStaticFunction '..name..' unnecessary\n')
+	end
+	return code
+end
+
+local function removeInlineFunction(code, name)
+	local n
+	code, n = code:gsub('__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
+	if n == 0 then
+		io.stderr:write('removeInlineFunction '..name..' unnecessary\n')
+	end
+	return code
+end
+
+local function removeDeclSpecNoInlineFunction(code, name)
+	local n
+	code, n = code:gsub('__declspec%(noinline%)%s*__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
+	if n == 0 then
+		io.stderr:write('removeDeclSpecNoInlineFunction '..name..' unnecessary\n')
+	end
 	return code
 end
 
@@ -107,20 +172,6 @@ local function fixEnumsAndDefineMacrosInterleaved(code)
 	return lines:concat'\n'
 end
 
--- ok with {.-} it fails on funcntions that have {}'s in their body, like wmemset
--- so lets try %b{}
--- TODO name might have a * before it instead of a space...
-local function removeStaticFunction(code, name)
-	return code:gsub('static%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
-end
-
-local function removeInlineFunction(code, name)
-	return code:gsub('__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
-end
-
-local function removeDeclSpecNoInlineFunction(code, name)
-	return code:gsub('__declspec%(noinline%)%s*__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
-end
 
 
 local includeList = table()
@@ -1992,7 +2043,7 @@ return setmetatable({
 	-- used by GL, GLES1, GLES2 ...
 	{
 		inc = '<KHR/khrplatform.h>',
-		out = 'KHR/khrplatform.lua',	-- TODO out to Linux/KHR
+		out = 'KHR/khrplatform.lua',	-- TODO out to Linux/KHR ... and Windows/KHR separately?
 	},
 
 	-- inc is put last before flags
@@ -2131,6 +2182,13 @@ return require 'ffi.load' 'png'
 			code = removeWarnings(code)
 
 			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
+
+			-- TODO evaluate this and insert it correctly?
+			code = code .. [[
+// these aren't being generated correctly so here they are:
+enum { SDL_WINDOWPOS_UNDEFINED = 0x1FFF0000u };
+enum { SDL_WINDOWPOS_CENTERED = 0x2FFF0000u };
+]]
 
 			code = code .. [[
 return require 'ffi.load' 'SDL2'

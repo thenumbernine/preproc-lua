@@ -20,7 +20,7 @@ if not req then error("make_all.lua all for all, or make_all.lua <some filename>
 if req ~= 'all' then
 	-- TODO seems using <> or "" now is essential for excluding recursive require's
 	if req:sub(1,1) ~= '<' and req:sub(1,1) ~= '"' then
-		error("gotta be system or user include space")
+		error('must be system (<...>) or user ("...") include space')
 	end
 	print('searching for '..req)
 	includeList = table.filter(includeList, function(inc)

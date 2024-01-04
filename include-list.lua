@@ -843,6 +843,7 @@ enum { WCHAR_MAX = 2147483647 };
 		inc = '<wchar.h>',
 		out = 'Linux/c/wchar.lua',
 		final = function(code)
+			code = remove_VA_LIST_DEFINED(code)
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 			code = remove_need_macro(code)
 			return code

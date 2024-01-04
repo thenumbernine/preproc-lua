@@ -1971,7 +1971,7 @@ require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never incl
 	-- used by GL, GLES1, GLES2 ...
 	{
 		inc = '<KHR/khrplatform.h>',
-		out = 'KHR/khrplatform.lua',
+		out = 'KHR/khrplatform.lua',	-- TODO out to Linux/KHR
 	},
 
 	-- inc is put last before flags

@@ -137,7 +137,7 @@ function Preproc:getDefineCode(k, v, l)
 
 		local vnumstr, vnum
 		for _,suffix in ipairs{'', 'u', 'l', 'z', 'ul', 'uz', 'll', 'ull'} do
-			vnumstr = v:match('(.*)'..suffix..'$')
+			vnumstr = v:lower():match('(.*)'..suffix..'$')
 			-- TODO optional 's for digit separtors
 			vnum = tonumber(vnumstr)
 			if vnum then

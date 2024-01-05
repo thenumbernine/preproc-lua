@@ -1524,7 +1524,7 @@ function Preproc:__call(args)
 						local nl = self:replaceMacros(l)
 						if self.foundIncompleteMacroLine then
 							--print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
-							lines:insert(i, self.foundIncompleteMacroWarningMessage)
+							--lines:insert(i, self.foundIncompleteMacroWarningMessage)
 							self.foundIncompleteMacroWarningMessage = nil
 							i = i + 1
 

@@ -2163,6 +2163,8 @@ return require 'ffi.load' 'zip'
 	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
+		
+		-- TODO remove contents of pnglibconf.h, or at least the PNG_*_SUPPORTED macros
 
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
 		code = safegsub(code, 'int void', 'int type');
@@ -2175,6 +2177,46 @@ return require 'ffi.load' 'png'
 
 	-- TODO STILL
 	-- looks like atm i'm using a hand-rolled sdl anyways
+	--[[
+TODO:
+sdl.h
+- comment out: 'enum { SDLCALL = 1 };'
+- comment out: 'enum { SDL_INLINE = 0 };'
+- comment out: 'enum { SDL_HAS_FALLTHROUGH = 0 };'
+- comment out: 'enum { SIZEOF_VOIDP = 8 };'
+- comment out: 'enum { STDC_HEADERS = 1 };'
+- comment out: 'enum { HAVE_.* = 1 };'
+- comment out: 'enum { SDL_.*_h_ = 1 };'
+- comment out: ... just do everything in SDL_config.h
+- comment out: ... everything in float.h
+	SDL_PRINTF_FORMAT_STRING
+	SDL_SCANF_FORMAT_STRING
+	DUMMY_ENUM_VALUE
+	SDLMAIN_DECLSPEC
+	SDL_FUNCTION
+	SDL_FILE
+	SDL_LINE
+	SDL_NULL_WHILE_LOOP_CONDITION
+	SDL_assert_state
+	SDL_assert_data
+	SDL_LIL_ENDIAN
+	SDL_BIG_ENDIAN
+	SDL_BYTEORDER
+	SDL_FLOATWORDORDER
+	HAS_BUILTIN_*
+	HAS_BROKEN_.*
+	SDL_SwapFloat function
+	SDL_MUTEX_TIMEOUT
+	SDL_RWOPS_*
+	RW_SEEK_*
+	AUDIO_*
+	SDL_Colour
+	SDL_BlitSurface
+	SDL_BlitScaled
+... can't use blanket comment of *_h because of sdl keycode enum define
+but you can in i think all other files ...
+also HDF5 has a lot of unused enums ...
+	--]]
 	{
 		inc = '<SDL2/SDL.h>',
 		out = 'sdl.lua',

@@ -1895,7 +1895,8 @@ local wrapper = setmetatable({
 			{'fits_set_timeout', 'ffstmo'},
 		} do
 			local new, old = table.unpack(kv)
-			code = code .. '\t' .. new .. ' = lib.' .. old .. ','
+			code = removeEnum(code, new..' = 0')
+			code = code .. '\t' .. new .. ' = lib.' .. old .. ',\n'
 		end
 
 		-- last one on the list with atypical args:

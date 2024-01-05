@@ -83,8 +83,8 @@ ffi.cdef[[
 				cmd:insert'-skip'
 				addincarg(f)
 			end
-			if inc.addDefinesAsEnumsLast then
-				cmd:insert'-addDefinesAsEnumsLast'
+			if inc.enumGenUnderscoreMacros then
+				cmd:insert'-enumGenUnderscoreMacros'
 			end
 			cmd:append{
 				'>>',

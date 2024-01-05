@@ -115,7 +115,13 @@ function Preproc:getDefineCode(k, v, l)
 --print('getDefineCode setting '..k..' to '..tolua(v))
 	self.macros[k] = v
 
-	if type(v) == 'string' then	-- exclude the arg-based macros from this -- they will have table values
+	if type(v) == 'string' 	-- exclude the arg-based macros from this -- they will have table values
+	-- ok in luajit you only have so many enums you can use
+	-- an I'm hitting that limit
+	-- so here's a shot in the dark:
+	-- exclude any macros that begin with _ for enum-generation, and assume they are only for internal use
+	and (self.enumGenUnderscoreMacros or v:sub(1,1) ~= '_')
+	then
 
 		-- try to evaluate the value
 		-- TODO will this mess with incomplete macros

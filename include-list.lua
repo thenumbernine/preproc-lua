@@ -17,17 +17,25 @@ local table = require 'ext.table'
 local io = require 'ext.io'
 local tolua = require 'ext.tolua'
 
--- TODO for all these .final() functions,
+-- for all these .final() functions,
 -- wrap them in a function that detects if the modification took place, and writes a warning to stderr if it didn't.
 -- that way as versions increment I can know which filters are no longer needed.
+local function safegsub(s, from, to, ...)
+	local n
+	s, n = string.gsub(s, from, to, ...)
+	if n == 0 then
+		-- TODO use the calling function from stack trace ... but will it always exist?
+		io.stderr:write('UNNECESSARY: ', tostring(from), '\n')
+	end
+	return s
+end
+
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-	local n
-	code, n = code:gsub('enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n', '')
-	if n == 0 then
-		io.stderr:write('remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n',
+		'')
 end
 
 -- TODO maybe ffi.Linux.c.bits.types instead
@@ -35,61 +43,59 @@ end
 -- i've separated it into its own file myself, so it has to be manually replaced
 -- same is true for a few other types
 local function replace_bits_types_builtin(code, ctype)
-	local n
-	code, n = code:gsub(string.patescape([[
+	return safegsub(
+		code,
+		string.patescape([[
 typedef __]]..ctype..[[ ]]..ctype..[[;
-enum { __]]..ctype..[[_defined = 1 };]]),
+enum { __]]..ctype..[[_defined = 1 };]]
+		),
 		[=[]] require 'ffi.req' 'c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
 	)
-	if n == 0 then
-		io.stderr:write('replace_bits_types_builtin_code '..ctype..' unnecessary\n')
-	end
-	return code
+end
+
+local function removeEnum(code, enumstr)
+	return safegsub(
+		code,
+		'enum { '..enumstr..' };\n',
+		''
+	)
 end
 
 local function remove_need_macro(code)
-	local n
-	code, n = code:gsub('enum { __need_[_%w]* = 1 };\n', '')
-	if n == 0 then
-		io.stderr:write('remove_need_macro unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'enum { __need_[_%w]* = 1 };\n',
+		''
+	)
 end
 
 -- _VA_LIST_DEFINED and va_list don't appear next to each other like the typical bits_types_builtin do
 local function remove_VA_LIST_DEFINED(code)
-	local n
-	code, n = code:gsub('enum { _VA_LIST_DEFINED = 1 };\n', '')
-	if n == 0 then
-		io.stderr:write('remove_VA_LIST_DEFINED unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'enum { _VA_LIST_DEFINED = 1 };\n',
+		'')
 end
 
 local function replace_va_list_require(code)
-	local n
-	code, n = code:gsub(
+	return safegsub(
+		code,
 		'typedef __gnuc_va_list va_list;',
 		[=[]] require 'ffi.req' 'c.va_list' ffi.cdef[[]=]
 	)
-	if n == 0 then
-		io.stderr:write('replace_va_list_require unnecessary\n')
-	end
-	return code
 end
 
 -- unistd.h and stdio.h both define SEEK_*, so ...
 local function replace_SEEK(code)
-	local n
-	code, n = code:gsub([[
+	return safegsub(
+		code,
+		[[
 enum { SEEK_SET = 0 };
 enum { SEEK_CUR = 1 };
 enum { SEEK_END = 2 };
-]], "]] require 'ffi.req' 'c.bits.types.SEEK' ffi.cdef[[\n")
-	if n == 0 then
-		io.stderr:write('replace_SEEK unnecessary\n')
-	end
-	return code
+]], 
+		"]] require 'ffi.req' 'c.bits.types.SEEK' ffi.cdef[[\n"
+	)
 end
 
 -- TODO keeping warnings as comments seems nice
@@ -97,53 +103,46 @@ end
 --  which runs the risk of bumping the first line skip of BEGIN ...
 --  which could replcae the whole file with a require()
 local function removeWarnings(code)
-	local n
-	code, n = code:gsub('warning:[^\n]*\n', '')
-	if n == 0 then
-		io.stderr:write('removeWarnings unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'warning:[^\n]*\n',
+		''
+	)
 end
 
 local function commentOutLine(code, line)
-	local n
-	code, n = code:gsub(
+	return safegsub(
+		code,
 		string.patescape(line),
-		'/* manually commented out: '..line..' */')
-	if n == 0 then
-		io.stderr:write('commentOutLine '..line..' unnecessary\n')
-	end
-	return code
+		'/* manually commented out: '..line..' */'
+	)
 end
 
 -- ok with {.-} it fails on funcntions that have {}'s in their body, like wmemset
 -- so lets try %b{}
 -- TODO name might have a * before it instead of a space...
 local function removeStaticFunction(code, name)
-	local n
-	code, n = code:gsub('static%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
-	if n == 0 then
-		io.stderr:write('removeStaticFunction '..name..' unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'static%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}',
+		''
+	)
 end
 
 local function removeInlineFunction(code, name)
-	local n
-	code, n = code:gsub('__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
-	if n == 0 then
-		io.stderr:write('removeInlineFunction '..name..' unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}',
+		''
+	)
 end
 
 local function removeDeclSpecNoInlineFunction(code, name)
-	local n
-	code, n = code:gsub('__declspec%(noinline%)%s*__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}', '')
-	if n == 0 then
-		io.stderr:write('removeDeclSpecNoInlineFunction '..name..' unnecessary\n')
-	end
-	return code
+	return safegsub(
+		code,
+		'__declspec%(noinline%)%s*__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}',
+		''
+	)
 end
 
 -- these all have some inlined enum errors:
@@ -213,8 +212,8 @@ includeList:append(table{
 		inc = '<corecrt_wio.h>',
 		out = 'Windows/c/corecrt_wio.lua',
 		final = function(code)
-			code = code:gsub('enum { _wfinddata_t = 0 };', '')
-			code = code:gsub('enum { _wfinddatai64_t = 0 };', '')
+			code = removeEnum(code, '_wfinddata_t = 0')
+			code = removeEnum(code, '_wfinddatai64_t = 0')
 			return code
 		end,
 	},
@@ -329,8 +328,8 @@ typedef intptr_t ssize_t;
 		inc = '<io.h>',
 		out = 'Windows/c/io.lua',
 		final = function(code)
-			code = code:gsub('enum { _finddata_t = 0 };', '')
-			code = code:gsub('enum { _finddatai64_t = 0 };', '')
+			code = removeEnum(code, '_finddata_t = 0')
+			code = removeEnum(code, '_finddatai64_t = 0')
 
 			-- same as in corecrt_wio.h
 			code = code .. [=[
@@ -466,7 +465,7 @@ return setmetatable({
 				'_wstat',
 				'_wstati64',
 			} do
-				code = code:gsub('enum { '..f..' = 0 };', '')
+				code = removeEnum(code, f..' = 0')
 			end
 
 			code = removeStaticFunction(code, 'fstat')	-- _fstat64i32
@@ -674,7 +673,7 @@ includeList:append(table{
 		out = 'Linux/c/bits/floatn.lua',
 		final = function(code)
 			-- luajit doesn't handle float128 ...
-			--code = code:gsub('(128[_%w]*) = 1', '%1 = 0')
+			--code = safegsub(code, '(128[_%w]*) = 1', '%1 = 0')
 			return code
 		end,
 	},
@@ -686,10 +685,11 @@ includeList:append(table{
 		-- `]] require 'ffi.req' 'c.__FD_SETSIZE' ffi.cdef[[`
 		-- because it's a macro that appears in a few places, so I manually define it.
 		-- (and maybe also write the file?)
-		return (code:gsub(
+		return safegsub(
+			code,
 			'enum { __FD_SETSIZE = 1024 };',
 			[=[]] require 'ffi.req' 'c.__FD_SETSIZE' ffi.cdef[[]=]
-		))
+		)
 	end},
 
 	-- depends: bits/types.h
@@ -846,26 +846,14 @@ return statlib
 
 			--code = replace_bits_types_builtin(code, 'intptr_t')
 			-- not the same def ...
-			code = code:gsub([[
+			code = safegsub(
+				code,
+				[[
 typedef long int intptr_t;
 enum { __intptr_t_defined = 1 };
-]], [=[]] require 'ffi.req' 'c.bits.types.intptr_t' ffi.cdef[[]=])
-
-
-			-- error: `attempt to redefine 'WCHAR_MIN' at line 75
-			-- because it's already in <wchar.h>
-			-- comment in stdint.h:
-			-- "These constants might also be defined in <wchar.h>."
-			-- yes. yes they are.
-			-- so how to fix this ...
-			-- looks like wchar.h doesn't include stdint.h...
-			-- and stdint.h includes bits/wchar.h but not wchar.h
-			-- and yeah the macros are in wchar.h, not bits/whcar.h
-			-- hmm ...
-			code = code:gsub(string.patescape[[
-enum { WCHAR_MIN = -2147483648 };
-enum { WCHAR_MAX = 2147483647 };
-]], [=[]] require 'ffi.req' 'c.wchar' ffi.cdef[[]=])
+]],
+				[=[]] require 'ffi.req' 'c.bits.types.intptr_t' ffi.cdef[[]=]
+			)
 
 			return code
 		end,
@@ -921,8 +909,6 @@ enum { WCHAR_MAX = 2147483647 };
 	-- mind you I could just make the warning: output into a comment
 	--  and there would be no need for manual manipulation here
 	{inc='<limits.h>', out='Linux/c/limits.lua', final=function(code)
-		-- warning for redefining LLONG or something
-		code = removeWarnings(code)
 		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		return code
 	end},
@@ -951,28 +937,19 @@ enum { WCHAR_MAX = 2147483647 };
 			-- you'll have to manually create this file
 			code = replace_SEEK(code)
 
-			-- there are a few enums defined, and then #define'd, and preproc leaves an enum = 0, so make sure the latter is removed
-			-- [[ look for specific prefix of enum = 0
-			code = code:gsub('enum { _PC_[%w_]+ = 0 };', '')
-			code = code:gsub('enum { _SC_[%w_]+ = 0 };', '')
-			code = code:gsub('enum { _CS_[%w_]+ = 0 };', '')
-			--]]
-			--[[ would be nice to remove automatically
-			code = code:gsub('([%w_]+)(,?) enum { ([%w_]+) = 0 };', function(a,b,c)
-				if a == c then return a..b else return '%0' end
-			end)
-			--]]
-
-			code = code:gsub(
+			--[=[
+			code = safegsub(
+				code,
 				-- TODO i'm sure this dir will change in the future ...
-				string.patescape('/* BEGIN /usr/include/x86_64-linux-gnu/bits/confname.h */')
+				string.patescape('/* ++ BEGIN /usr/include/x86_64-linux-gnu/bits/confname.h */')
 				..'.*'
-				..string.patescape('/* END   /usr/include/x86_64-linux-gnu/bits/confname.h */'),
+				..string.patescape('/* ++ END   /usr/include/x86_64-linux-gnu/bits/confname.h */'),
 				[[
 
-/* TODO here I skipped conframe because it was too many mixed enums and ddefines => enums */
+/* TODO here I skipped conframe because it was too many mixed enums and ddefines => enums  .... but do I still need to, because it seems to be sorted out. */
 ]]
 			)
+			--]=]
 --[=[ TODO this goes in the manually-created split file in ffi.c.unistd
 			code = code .. [[
 -- I can't change ffi.C.getcwd to ffi.C._getcwd in the case of Windows
@@ -1020,7 +997,6 @@ return ffi.C
 	-- identical in windows and linux ...
 	{inc='<stdbool.h>', out='Linux/c/stdbool.lua', final=function(code)
 		-- luajit has its own bools already defined
-		code = commentOutLine(code, 'enum { bool = 0 };')
 		code = commentOutLine(code, 'enum { true = 1 };')
 		code = commentOutLine(code, 'enum { false = 0 };')
 		return code
@@ -1068,18 +1044,18 @@ return setmetatable({}, {
 		out = 'Linux/c/math.lua',
 		final = function(code)
 			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			code = code:gsub('enum { __MATH_DECLARING_DOUBLE = %d+ };', '')
-			code = code:gsub('enum { __MATH_DECLARING_FLOATN = %d+ };', '')
+			code = safegsub(code, 'enum { __MATH_DECLARING_DOUBLE = %d+ };', '')
+			code = safegsub(code, 'enum { __MATH_DECLARING_FLOATN = %d+ };', '')
 
 			-- [[ enums and #defines intermixed ... smh
-			code = code:gsub(' ([_%a][_%w]*) = enum { ([_%a][_%w]*) = %d+ };', function(a,b)
+			code = safegsub(code, ' ([_%a][_%w]*) = enum { ([_%a][_%w]*) = %d+ };', function(a,b)
 				if a == b then return ' '..a..' = ' end
 				return '%0'
 			end)
 			--]]
 
 			-- gcc thinks we have float128 support, but luajit doesn't support it
-			code = code:gsub('[^\n]*_Float128[^\n]*', '')
+			code = safegsub(code, '[^\n]*_Float128[^\n]*', '')
 
 			return code
 		end,
@@ -1123,8 +1099,6 @@ return setmetatable({}, {
 	end},
 
 	{inc='<sys/param.h>', out='Linux/c/sys/param.lua', final=function(code)
-		-- warning for redefining LLONG_MIN or something
-		code = removeWarnings(code)
 		code = fixEnumsAndDefineMacrosInterleaved(code)
 		-- i think all these stem from #define A B when the value is a string and not numeric
 		--  but my #define to enum inserter forces something to be produced
@@ -1158,40 +1132,44 @@ return setmetatable({}, {
 	-- depends on bits/libc-header-start
 	-- '<identifier>' expected near '_Complex' at line 2
 	-- has to do with enum/define'ing the builtin word _Complex
-	{inc='<complex.h>', out='Linux/c/complex.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = commentOutLine(code, 'enum { _Complex = 0 };')
-		code = commentOutLine(code, 'enum { complex = 0 };')
-		code = commentOutLine(code, 'enum { _Mdouble_ = 0 };')
+	{
+		inc = '<complex.h>',
+		out = 'Linux/c/complex.lua',
+		enumGenUnderscoreMacros = true,
+		final = function(code)
+			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+			code = commentOutLine(code, 'enum { complex = 0 };')
+			code = commentOutLine(code, 'enum { _Mdouble_ = 0 };')
 
-		-- this uses define<=>typedef which always has some trouble
-		-- and this uses redefines which luajit ffi cant do so...
-		-- TODO from
-		--  /* # define _Mdouble_complex_ _Mdouble_ _Complex ### string, not number "_Mdouble_ _Complex" */
-		-- to
-		--  /* redefining matching value: #define _Mdouble_\t\tfloat */
-		-- replace 	_Mdouble_complex_ with double _Complex
-		-- from there to
-		--  /* # define _Mdouble_       long double ### string, not number "long double" */
-		-- replace _Mdouble_complex_ with float _Complex
-		-- and from there until then end
-		-- replace _Mdouble_complex_  with long double _Complex
-		local a = code:find'_Mdouble_complex_ _Mdouble_ _Complex'
-		local b = code:find'define _Mdouble_%s*float'
-		local c = code:find'define _Mdouble_%s*long double'
-		local parts = table{
-			code:sub(1,a),
-			code:sub(a+1,b),
-			code:sub(b+1,c),
-			code:sub(c+1),
-		}
-		parts[2] = parts[2]:gsub('_Mdouble_complex_', 'double _Complex')
-		parts[3] = parts[3]:gsub('_Mdouble_complex_', 'float _Complex')
-		parts[4] = parts[4]:gsub('_Mdouble_complex_', 'long double _Complex')
-		code = parts:concat()
+			-- this uses define<=>typedef which always has some trouble
+			-- and this uses redefines which luajit ffi cant do so...
+			-- TODO from
+			--  /* # define _Mdouble_complex_ _Mdouble_ _Complex ### string, not number "_Mdouble_ _Complex" */
+			-- to
+			--  /* redefining matching value: #define _Mdouble_\t\tfloat */
+			-- replace 	_Mdouble_complex_ with double _Complex
+			-- from there to
+			--  /* # define _Mdouble_       long double ### string, not number "long double" */
+			-- replace _Mdouble_complex_ with float _Complex
+			-- and from there until then end
+			-- replace _Mdouble_complex_  with long double _Complex
+			local a = code:find'_Mdouble_complex_ _Mdouble_ _Complex'
+			local b = code:find'define _Mdouble_%s*float'
+			local c = code:find'define _Mdouble_%s*long double'
+			local parts = table{
+				code:sub(1,a),
+				code:sub(a+1,b),
+				code:sub(b+1,c),
+				code:sub(c+1),
+			}
+			parts[2] = parts[2]:gsub('_Mdouble_complex_', 'double _Complex')
+			parts[3] = parts[3]:gsub('_Mdouble_complex_', 'float _Complex')
+			parts[4] = parts[4]:gsub('_Mdouble_complex_', 'long double _Complex')
+			code = parts:concat()
 
-		return code
-	end},
+			return code
+		end,
+	},
 
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
@@ -1208,18 +1186,16 @@ includeList:append(table{
 		inc='<zlib.h>',
 		out='zlib.lua',
 		final=function(code)
-			-- LLONG_MIN warning
-			code = removeWarnings(code)
 			-- getting around the FAR stuff
 			-- why am I generating an enum for it?
 			-- and now just replace the rest with nothing
-			code = code:gsub('enum { FAR = 1 };\n', '')
-			code = code:gsub(' FAR ', ' ')
+			code = safegsub(code, 'enum { FAR = 1 };\n', '')
+			code = safegsub(code, ' FAR ', ' ')
 			-- same deal with z_off_t
 			-- my preproc => luajit can't handle defines that are working in place of typedefs
-			code = code:gsub('enum { z_off_t = 0 };\n', '')
-			code = code:gsub('z_off_t', 'off_t')
-			code = remove_need_macro(code)
+			code = safegsub(code, 'enum { z_off_t = 0 };\n', '')
+			code = safegsub(code, 'enum { z_off64_t = 0 };\n', '')
+			code = safegsub(code, 'z_off_t', 'off_t')
 
 			-- add some macros onto the end manually
 			code = code .. [[
@@ -1269,7 +1245,6 @@ return wrapper
 
 	-- apt install libffi-dev
 	{inc='<ffi.h>', out='libffi.lua', final=function(code)
-		code = removeWarnings(code)	-- LLONG_MIN
 		code = [[
 -- WARNING, this is libffi, not luajit ffi
 -- will that make my stupid ?/?.lua LUA_PATH rule screw things up?  if so then move this file ... or rename it to libffi.lua or something
@@ -1290,11 +1265,8 @@ return require 'ffi.load' 'gif'
 	end},
 
 	{inc='<fitsio.h>', out='fitsio.lua', final=function(code)
-		code = removeWarnings(code)	-- LLONG_MIN
 		-- OFF_T is define'd to off_t soo ...
-		code = code:gsub('enum { OFF_T = 0 };\n', '')
-		code = code:gsub('OFF_T', 'off_t')
-		code = remove_need_macro(code)
+		code = safegsub(code, 'enum { OFF_T = 0 };\n', '')
 
 		-- TODO autogen this from /usr/include/longnam.h
 		-- TODO TODO autogen all macro function mappings, not just this one
@@ -1915,8 +1887,6 @@ return require 'ffi.load' 'netcdf'
 				-- in other words, the defs in here are getting more and more conditional ...
 				-- pretty soon a full set of headers + full preprocessor might be necessary
 				-- TODO regen this on Windows and compare?
-			code = removeWarnings(code)	-- LLONG_MIN
-			code = remove_need_macro(code)
 			code = code .. [[
 return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 ]]
@@ -1945,7 +1915,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 		out = 'cimgui.lua',
 		final = function(code)
 			-- this is already in SDL
-			code = code:gsub(
+			code = safegsub(code, 
 				string.patescape'struct SDL_Window;'..'\n'
 				..string.patescape'struct SDL_Renderer;'..'\n'
 				..string.patescape'typedef union SDL_Event SDL_Event;',
@@ -1953,10 +1923,9 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 				-- simultaneously insert require to ffi/sdl.lua
 				"]] require 'ffi.req' 'sdl' ffi.cdef[["
 			)
-			code = remove_need_macro(code)
 
 			-- looks like in the backend file there's one default parameter value ...
-			code = code:gsub('glsl_version = nullptr', 'glsl_version')
+			code = safegsub(code, 'glsl_version = nullptr', 'glsl_version')
 
 			code = code .. [[
 return require 'ffi.load' 'cimgui_sdl'
@@ -1973,7 +1942,7 @@ return require 'ffi.load' 'cimgui_sdl'
 
 			-- ok because I have more than one inc, the second inc points back to the first, and so we do create a self-reference
 			-- so fix it here:
-			--code = code:gsub(string.patescape"]] require 'ffi.req' 'OpenCL' ffi.cdef[[\n", "")
+			--code = safegsub(code, string.patescape"]] require 'ffi.req' 'OpenCL' ffi.cdef[[\n", "")
 
 			code = code .. [[
 return require 'ffi.load' 'OpenCL'
@@ -1994,10 +1963,6 @@ return require 'ffi.load' 'OpenCL'
 		out = ffi.os..'/tiff.lua',
 		os = ffi.os,
 		flags = string.trim(io.readproc'pkg-config --cflags libtiff-4'),
-		final = function(code)
-			code = remove_need_macro(code)
-			return code
-		end,
 	},
 
 	-- apt install libjpeg-turbo-dev
@@ -2062,7 +2027,7 @@ return setmetatable({
 			if ffi.os == 'Windows' then
 				-- TODO this won't work now that I'm separating out KHRplatform.h ...
 				code = "local code = ''"
-				code = code:gsub(
+				code = safegsub(code, 
 					string.patescape'ffi.cdef',
 					'code = code .. '
 				)
@@ -2087,8 +2052,6 @@ return require 'ffi.load' 'GL'
 		out = 'lua.lua',
 		flags = string.trim(io.readproc'pkg-config --cflags lua'),
 		final = function(code)
-			code = removeWarnings(code)	-- LLONG_MIN
-			code = remove_need_macro(code)
 			code = [[
 ]] .. code .. [[
 return require 'ffi.load' 'lua'
@@ -2099,7 +2062,6 @@ return require 'ffi.load' 'lua'
 
 	-- depends on complex.h
 	{inc='<cblas.h>', out='cblas.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 		code = [[
 ]] .. code .. [[
 return require 'ffi.load' 'openblas'
@@ -2110,7 +2072,7 @@ return require 'ffi.load' 'openblas'
 	{inc='<lapack.h>', out='lapack.lua', final=function(code)
 		-- needs lapack_int replaced with int, except the enum def line
 		-- the def is conditional, but i think this is the right eval ...
-		code = code:gsub('enum { lapack_int = 0 };', 'typedef int32_t lapack_int;')
+		code = safegsub(code, 'enum { lapack_int = 0 };', 'typedef int32_t lapack_int;')
 --[[
 #if defined(LAPACK_ILP64)
 #define lapack_int        int64_t
@@ -2124,8 +2086,8 @@ return require 'ffi.load' 'openblas'
 		-- which is defined as
 		-- #define LAPACK_GLOBAL(lcname,UCNAME)  lcname##_
 		-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
-		code = code:gsub('enum { LAPACK_[_%w]+ = 0 };', '')
-		code = code:gsub('\n\n', '\n')
+		code = safegsub(code, 'enum { LAPACK_[_%w]+ = 0 };', '')
+		code = safegsub(code, '\n\n', '\n')
 
 		code = code .. [[
 return require 'ffi.load' 'lapack'
@@ -2158,7 +2120,7 @@ return require 'ffi.load' 'zip'
 		code = removeWarnings(code)
 
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
-		code = code:gsub('int void', 'int type');
+		code = safegsub(code, 'int void', 'int type');
 
 		code = code .. [[
 return require 'ffi.load' 'png'
@@ -2184,11 +2146,13 @@ return require 'ffi.load' 'png'
 			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
 
 			-- TODO evaluate this and insert it correctly?
-			code = code .. [[
+			code = code .. [=[
+ffi.cdef[[
 // these aren't being generated correctly so here they are:
 enum { SDL_WINDOWPOS_UNDEFINED = 0x1FFF0000u };
 enum { SDL_WINDOWPOS_CENTERED = 0x2FFF0000u };
 ]]
+]=]
 
 			code = code .. [[
 return require 'ffi.load' 'SDL2'
@@ -2216,8 +2180,8 @@ return require 'ffi.load' 'SDL2'
 		final = function(code)
 			-- the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
 			-- ... I need to comment it out *HERE*.
-			code = code:gsub('static int _ov_header_fseek_wrap%b()%b{}', '')
-			code = code:gsub('static ov_callbacks OV_CALLBACKS_[_%w]+ = %b{};', '')
+			code = safegsub(code, 'static int _ov_header_fseek_wrap%b()%b{}', '')
+			code = safegsub(code, 'static ov_callbacks OV_CALLBACKS_[_%w]+ = %b{};', '')
 
 			code = code .. [[
 local lib = require 'ffi.load' 'vorbisfile'
@@ -2351,10 +2315,10 @@ return require 'ffi.load' 'openal'
 		flags = string.trim(io.readproc('pkg-config --cflags mono-2')),
 		final = function(code)
 			-- enums are ints right ... ?
-			code = code:gsub('typedef (enum %b{})%s*([_%a][_%w]*);', '%1; typedef int %2;')
+			code = safegsub(code, 'typedef (enum %b{})%s*([_%a][_%w]*);', '%1; typedef int %2;')
 			-- these are interleaved in another enum ...
-			code = code:gsub('enum { MONO_TABLE_LAST = 0 };', ' ')
-			code = code:gsub('enum { MONO_TABLE_NUM = 1 };', ' ')
+			code = safegsub(code, 'enum { MONO_TABLE_LAST = 0 };', ' ')
+			code = safegsub(code, 'enum { MONO_TABLE_NUM = 1 };', ' ')
 			-- pkg-config --libs mono-2
 			-- -L/usr/lib/pkgconfig/../../lib -lmono-2.0 -lm -lrt -ldl -lpthread
 			-- return require 'ffi.load' 'mono-2.0' ... failed to find it

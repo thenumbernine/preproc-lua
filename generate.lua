@@ -392,6 +392,11 @@ do
 		elseif f == "-skip" then
 			args:remove(i)
 			skipfiles:insert(args:remove(i))
+		elseif f == "-enumGenUnderscoreMacros" then
+			args:remove(i)
+			-- don't ignore underscore enums
+			-- needed by complex.h since there are some _ enums its post-processing depends on 
+			preproc.enumGenUnderscoreMacros = true
 		else
 			i = i + 1
 		end

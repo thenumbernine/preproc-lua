@@ -120,7 +120,7 @@ function Preproc:getDefineCode(k, v, l)
 	-- an I'm hitting that limit
 	-- so here's a shot in the dark:
 	-- exclude any macros that begin with _ for enum-generation, and assume they are only for internal use
-	and (self.enumGenUnderscoreMacros or v:sub(1,1) ~= '_')
+	and (self.enumGenUnderscoreMacros or k:sub(1,1) ~= '_')
 	then
 
 		-- try to evaluate the value

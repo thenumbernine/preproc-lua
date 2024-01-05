@@ -93,7 +93,7 @@ local function replace_SEEK(code)
 enum { SEEK_SET = 0 };
 enum { SEEK_CUR = 1 };
 enum { SEEK_END = 2 };
-]], 
+]],
 		"]] require 'ffi.req' 'c.bits.types.SEEK' ffi.cdef[[\n"
 	)
 end
@@ -855,6 +855,26 @@ enum { __intptr_t_defined = 1 };
 				[=[]] require 'ffi.req' 'c.bits.types.intptr_t' ffi.cdef[[]=]
 			)
 
+
+			-- error: `attempt to redefine 'WCHAR_MIN' at line 75
+			-- because it's already in <wchar.h>
+			-- comment in stdint.h:
+			-- "These constants might also be defined in <wchar.h>."
+			-- yes. yes they are.
+			-- so how to fix this ...
+			-- looks like wchar.h doesn't include stdint.h...
+			-- and stdint.h includes bits/wchar.h but not wchar.h
+			-- and yeah the macros are in wchar.h, not bits/whcar.h
+			-- hmm ...
+			code = safegsub(
+				code,
+				string.patescape[[
+enum { WCHAR_MIN = -2147483648 };
+enum { WCHAR_MAX = 2147483647 };
+]],
+				[=[]] require 'ffi.req' 'c.wchar' ffi.cdef[[]=]
+			)
+
 			return code
 		end,
 	},
@@ -997,6 +1017,7 @@ return ffi.C
 	-- identical in windows and linux ...
 	{inc='<stdbool.h>', out='Linux/c/stdbool.lua', final=function(code)
 		-- luajit has its own bools already defined
+		code = commentOutLine(code, 'enum { bool = 0 };')
 		code = commentOutLine(code, 'enum { true = 1 };')
 		code = commentOutLine(code, 'enum { false = 0 };')
 		return code
@@ -1915,7 +1936,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 		out = 'cimgui.lua',
 		final = function(code)
 			-- this is already in SDL
-			code = safegsub(code, 
+			code = safegsub(code,
 				string.patescape'struct SDL_Window;'..'\n'
 				..string.patescape'struct SDL_Renderer;'..'\n'
 				..string.patescape'typedef union SDL_Event SDL_Event;',
@@ -2027,7 +2048,7 @@ return setmetatable({
 			if ffi.os == 'Windows' then
 				-- TODO this won't work now that I'm separating out KHRplatform.h ...
 				code = "local code = ''"
-				code = safegsub(code, 
+				code = safegsub(code,
 					string.patescape'ffi.cdef',
 					'code = code .. '
 				)

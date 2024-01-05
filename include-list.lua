@@ -17,6 +17,9 @@ local table = require 'ext.table'
 local io = require 'ext.io'
 local tolua = require 'ext.tolua'
 
+-- needs to match generate.lua or make_all.lua or wherever i'm setting it.
+local enumGenUnderscoreMacros = true
+
 -- for all these .final() functions,
 -- wrap them in a function that detects if the modification took place, and writes a warning to stderr if it didn't.
 -- that way as versions increment I can know which filters are no longer needed.
@@ -32,6 +35,7 @@ end
 
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+	if enumGenUnderscoreMacros then return code end
 	return safegsub(
 		code,
 		'enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n',
@@ -43,14 +47,27 @@ end
 -- i've separated it into its own file myself, so it has to be manually replaced
 -- same is true for a few other types
 local function replace_bits_types_builtin(code, ctype)
-	return safegsub(
-		code,
-		string.patescape([[
+	-- if we're excluing underscore macros this then the enum line won't be there.
+	-- if we're including underscore macros then the enum will be multiply defined and need to b removed
+	-- one way to unify these is just remove the enum regardless (in the filter() function) and then gsub the typedef with the require
+	if enumGenUnderscoreMacros then
+		return safegsub(
+			code,
+			string.patescape(
+				[[typedef __]]..ctype..[[ ]]..ctype..[[;]]
+			),
+			[=[]] require 'ffi.req' 'c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
+		)
+	else
+		return safegsub(
+			code,
+			string.patescape([[
 typedef __]]..ctype..[[ ]]..ctype..[[;
 enum { __]]..ctype..[[_defined = 1 };]]
-		),
-		[=[]] require 'ffi.req' 'c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
-	)
+			),
+			[=[]] require 'ffi.req' 'c.bits.types.]=]..ctype..[=[' ffi.cdef[[]=]
+		)
+	end
 end
 
 local function removeEnum(code, enumstr)
@@ -62,6 +79,7 @@ local function removeEnum(code, enumstr)
 end
 
 local function remove_need_macro(code)
+	if enumGenUnderscoreMacros then return code end
 	return safegsub(
 		code,
 		'enum { __need_[_%w]* = 1 };\n',
@@ -71,6 +89,7 @@ end
 
 -- _VA_LIST_DEFINED and va_list don't appear next to each other like the typical bits_types_builtin do
 local function remove_VA_LIST_DEFINED(code)
+	if enumGenUnderscoreMacros then return code end
 	return safegsub(
 		code,
 		'enum { _VA_LIST_DEFINED = 1 };\n',

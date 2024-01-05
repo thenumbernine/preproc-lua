@@ -35,7 +35,6 @@ end
 
 
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-	if enumGenUnderscoreMacros then return code end
 	return safegsub(
 		code,
 		'enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };\n',
@@ -79,7 +78,6 @@ local function removeEnum(code, enumstr)
 end
 
 local function remove_need_macro(code)
-	if enumGenUnderscoreMacros then return code end
 	return safegsub(
 		code,
 		'enum { __need_[_%w]* = 1 };\n',
@@ -89,7 +87,6 @@ end
 
 -- _VA_LIST_DEFINED and va_list don't appear next to each other like the typical bits_types_builtin do
 local function remove_VA_LIST_DEFINED(code)
-	if enumGenUnderscoreMacros then return code end
 	return safegsub(
 		code,
 		'enum { _VA_LIST_DEFINED = 1 };\n',

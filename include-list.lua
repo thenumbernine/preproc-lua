@@ -728,7 +728,14 @@ includeList:append(table{
 
 	-- depends: features.h bits/types.h
 	-- mind you i found in the orig where it shouldve require'd features it was requiring itself ... hmm ...
-	{inc='<sys/termios.h>', out='Linux/c/sys/termios.lua'},
+	{
+		inc = '<sys/termios.h>',
+		out = 'Linux/c/sys/termios.lua',
+		final = function(code)
+			code = replace_bits_types_builtin(code, 'pid_t')
+			return code
+		end,
+	},
 
 	-- depends: features.h bits/types.h sys/select.h
 	{inc='<sys/types.h>', out='Linux/c/sys/types.lua', final=function(code)

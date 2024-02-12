@@ -737,6 +737,12 @@ includeList:append(table{
 		end,
 	},
 
+	-- used by c/pthread, c/sys/types, c/signal
+	{
+		inc = '<bits/pthreadtypes.h>',
+		out = 'Linux/c/pthreadtypes.lua',
+	},
+
 	-- depends: features.h bits/types.h sys/select.h
 	{inc='<sys/types.h>', out='Linux/c/sys/types.lua', final=function(code)
 		for _,t in ipairs{
@@ -1141,6 +1147,83 @@ return setmetatable({}, {
 			code = fixEnumsAndDefineMacrosInterleaved(code)
 			return code
 	end},
+
+	{
+		inc = '<signal.h>',
+		out = 'Linux/c/signal.lua',
+		final = function(code)
+			-- i think all these stem from #define A B when the value is a string and not numeric
+			--  but my #define to enum inserter forces something to be produced
+			code = commentOutLine(code, 'enum { SIGIO = 0 };')
+			code = commentOutLine(code, 'enum { SIGCLD = 0 };')
+			code = commentOutLine(code, 'enum { SI_DETHREAD = 0 };')
+			code = commentOutLine(code, 'enum { SI_TKILL = 0 };')
+			code = commentOutLine(code, 'enum { SI_SIGIO = 0 };')
+			code = commentOutLine(code, 'enum { SI_ASYNCIO = 0 };')
+			code = commentOutLine(code, 'enum { SI_ASYNCNL = 0 };')
+			code = commentOutLine(code, 'enum { SI_MESGQ = 0 };')
+			code = commentOutLine(code, 'enum { SI_TIMER = 0 };')
+			code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
+			code = commentOutLine(code, 'enum { SI_USER = 0 };')
+			code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
+			code = commentOutLine(code, 'enum { ILL_%w+ = 0 };')
+			code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+			
+			code = commentOutLine(code, 'enum { ILL_ILLOPC = 0 };')
+			code = commentOutLine(code, 'enum { ILL_ILLOPN = 0 };')
+			code = commentOutLine(code, 'enum { ILL_ILLADR = 0 };')
+			code = commentOutLine(code, 'enum { ILL_ILLTRP = 0 };')
+			code = commentOutLine(code, 'enum { ILL_PRVOPC = 0 };')
+			code = commentOutLine(code, 'enum { ILL_PRVREG = 0 };')
+			code = commentOutLine(code, 'enum { ILL_COPROC = 0 };')
+			code = commentOutLine(code, 'enum { ILL_BADSTK = 0 };')
+			code = commentOutLine(code, 'enum { ILL_BADIADDR = 0 };')
+			code = commentOutLine(code, 'enum { FPE_INTDIV = 0 };')
+			code = commentOutLine(code, 'enum { FPE_INTOVF = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTDIV = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTOVF = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTUND = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTRES = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTINV = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTSUB = 0 };')
+			code = commentOutLine(code, 'enum { FPE_FLTUNK = 0 };')
+			code = commentOutLine(code, 'enum { FPE_CONDTRAP = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_MAPERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_ACCERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_BNDERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_PKUERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_ACCADI = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_ADIDERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_ADIPERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_MTEAERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_MTESERR = 0 };')
+			code = commentOutLine(code, 'enum { BUS_ADRALN = 0 };')
+			code = commentOutLine(code, 'enum { BUS_ADRERR = 0 };')
+			code = commentOutLine(code, 'enum { BUS_OBJERR = 0 };')
+			code = commentOutLine(code, 'enum { BUS_MCEERR_AR = 0 };')
+			code = commentOutLine(code, 'enum { BUS_MCEERR_AO = 0 };')
+			code = commentOutLine(code, 'enum { CLD_EXITED = 0 };')
+			code = commentOutLine(code, 'enum { CLD_KILLED = 0 };')
+			code = commentOutLine(code, 'enum { CLD_DUMPED = 0 };')
+			code = commentOutLine(code, 'enum { CLD_TRAPPED = 0 };')
+			code = commentOutLine(code, 'enum { CLD_STOPPED = 0 };')
+			code = commentOutLine(code, 'enum { CLD_CONTINUED = 0 };')
+			code = commentOutLine(code, 'enum { POLL_IN = 0 };')
+			code = commentOutLine(code, 'enum { POLL_OUT = 0 };')
+			code = commentOutLine(code, 'enum { POLL_MSG = 0 };')
+			code = commentOutLine(code, 'enum { POLL_ERR = 0 };')
+			code = commentOutLine(code, 'enum { POLL_PRI = 0 };')
+			code = commentOutLine(code, 'enum { POLL_HUP = 0 };')
+			code = commentOutLine(code, 'enum { SIGEV_SIGNAL = 0 };')
+			code = commentOutLine(code, 'enum { SIGEV_NONE = 0 };')
+			code = commentOutLine(code, 'enum { SIGEV_THREAD = 0 };')
+			code = commentOutLine(code, 'enum { SIGEV_THREAD_ID = 0 };')
+			code = commentOutLine(code, 'enum { SS_ONSTACK = 0 };')
+			code = commentOutLine(code, 'enum { SS_DISABLE = 0 };')
+
+			return code
+		end,
+	},
 
 	{inc='<sys/param.h>', out='Linux/c/sys/param.lua', final=function(code)
 		code = fixEnumsAndDefineMacrosInterleaved(code)

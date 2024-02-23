@@ -145,7 +145,15 @@ local function removeStaticFunction(code, name)
 	)
 end
 
-local function removeInlineFunction(code, name)
+local function removeStaticInlineFunction(code, name)
+	return safegsub(
+		code,
+		'static%sinline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}',
+		''
+	)
+end
+
+local function remove__inlineFunction(code, name)
 	return safegsub(
 		code,
 		'__inline%s[^(]-%s'..name..'%s*%(.-%)%s*%b{}',
@@ -214,7 +222,7 @@ includeList:append(table{
 				'__local_stdio_printf_options',
 				'__local_stdio_scanf_options',
 			} do
-				code = removeInlineFunction(code, f)
+				code = remove__inlineFunction(code, f)
 			end
 			return code
 		end,
@@ -331,6 +339,7 @@ typedef intptr_t ssize_t;
 	{
 		inc = '<string.h>',
 		out = 'Windows/c/string.lua',
+		-- TODO latest uses some __REDIRECT_NTH macro that preproc.lua is choking on
 		-- TODO final() that outputs a wrapper that replaces calls to all the default POSIX functions with instead calls to the alternative safe ones
 		final = function(code)
 			code = removeStaticFunction(code, '_wcstok')
@@ -398,7 +407,7 @@ return setmetatable({
 				'wmemmove',
 				'wmemset',
 			} do
-				code = removeInlineFunction(code, f)
+				code = remove__inlineFunction(code, f)
 			end
 
 			-- corecrt_wio.h #define's types that I need, so typedef them here instead
@@ -694,19 +703,7 @@ includeList:append(table{
 		end,
 	},
 
-	{inc='<bits/types.h>', out='Linux/c/bits/types.lua', final=function(code)
-		-- manually:
-		-- `enum { __FD_SETSIZE = 1024 };`
-		-- has to be replaced with
-		-- `]] require 'ffi.req' 'c.__FD_SETSIZE' ffi.cdef[[`
-		-- because it's a macro that appears in a few places, so I manually define it.
-		-- (and maybe also write the file?)
-		return safegsub(
-			code,
-			'enum { __FD_SETSIZE = 1024 };',
-			[=[]] require 'ffi.req' 'c.__FD_SETSIZE' ffi.cdef[[]=]
-		)
-	end},
+	{inc='<bits/types.h>', out='Linux/c/bits/types.lua'},
 
 	-- depends: bits/types.h
 	{inc='<bits/stdint-intn.h>',	out='Linux/c/bits/stdint-intn.lua'},
@@ -758,14 +755,10 @@ includeList:append(table{
 		} do
 			code = replace_bits_types_builtin(code, t)
 		end
-		code = remove_need_macro(code)
 		return code
 	end},
 
-	{inc='<linux/limits.h>', out='Linux/c/linux/limits.lua', final=function(code)
-		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
-		return code
-	end},
+	{inc='<linux/limits.h>', out='Linux/c/linux/limits.lua'},
 
 -- requires manual manipulation:
 	-- depends: features.h
@@ -1168,7 +1161,7 @@ return setmetatable({}, {
 			code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
 			code = commentOutLine(code, 'enum { ILL_%w+ = 0 };')
 			code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
-			
+
 			code = commentOutLine(code, 'enum { ILL_ILLOPC = 0 };')
 			code = commentOutLine(code, 'enum { ILL_ILLOPN = 0 };')
 			code = commentOutLine(code, 'enum { ILL_ILLADR = 0 };')
@@ -2246,7 +2239,7 @@ return require 'ffi.load' 'zip'
 	{inc='<png.h>', out='png.lua', final=function(code)
 		-- warning for redefining LLONG_MIN or something
 		code = removeWarnings(code)
-		
+
 		-- TODO remove contents of pnglibconf.h, or at least the PNG_*_SUPPORTED macros
 
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
@@ -2497,6 +2490,44 @@ return require 'ffi.load' 'openal'
 ffi.load('/usr/lib/x86_64-linux-gnu/libstdc++.so.6', true)
 return ffi.load '/usr/lib/libmono-2.0.so'
 ]]
+			return code
+		end,
+	},
+
+	{
+		inc = '<pulse/pulseaudio.h>',
+		out = 'pulse.lua',
+		final = function(code)
+			-- so this spits out enums for both enums and #define's
+			-- that runs us into trouble sometimes ...
+			local lines = string.split(code, '\n')
+			local definedEnums = {}
+			for i=1,#lines do
+				local line = lines[i]
+				if line:match'^typedef enum' then
+					for w in line:gmatch'%S+' do
+						if w:match'^PA_' then
+							if w:match',$' then w = w:sub(1,-2) end
+--io.stderr:write('defining typedef enum '..w..'\n')
+							definedEnums[w] = true
+						end
+					end
+				end
+				local prefix, enumName = line:match'^(.*)enum { (.*) = 0 };$'
+				if enumName then
+--io.stderr:write('found enum=0 name '..enumName..'\n')
+					if definedEnums[enumName] then
+--io.stderr:write('...removing\n')
+						lines[i] = prefix
+					end
+				end
+			end
+			code = lines:concat'\n'
+			-- undefs of static inline functions ...
+			for f in ([[PA_CONTEXT_IS_GOOD PA_STREAM_IS_GOOD PA_SINK_IS_OPENED PA_SINK_IS_RUNNING PA_SOURCE_IS_OPENED PA_SOURCE_IS_RUNNING _pa_xnew_internal _pa_xnew0_internal _pa_xrenew_internal]]):gmatch'%S+' do
+				code = removeStaticInlineFunction(code, f)
+				code = safegsub(code, 'enum { '..f..' = 0 };', '')
+			end
 			return code
 		end,
 	},

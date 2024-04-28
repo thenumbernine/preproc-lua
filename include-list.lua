@@ -195,6 +195,11 @@ local function fixEnumsAndDefineMacrosInterleaved(code)
 	return lines:concat'\n'
 end
 
+-- pkgconfig doesn't work on windows so rather than try and fail a lot ...
+local function pkgconfigFlags(name)
+	if ffi.os == 'Windows' then return nil end
+	return string.trim(io.readproc('pkg-config --cflags '..assert(name)))
+end
 
 
 local includeList = table()
@@ -1989,7 +1994,7 @@ return wrapper
 	end},
 
 	-- apt install libnetcdf-dev
-	{inc='<netcdf.h>', out='netcdf.lua', flags=string.trim(io.readproc'pkg-config --cflags netcdf'), final=function(code)
+	{inc='<netcdf.h>', out='netcdf.lua', flags=pkgconfigFlags'netcdf', final=function(code)
 		code = code .. [[
 return require 'ffi.load' 'netcdf'
 ]]
@@ -2001,7 +2006,7 @@ return require 'ffi.load' 'netcdf'
 	{
 		inc = '<hdf5.h>',
 		out = 'hdf5.lua',
-		flags = string.trim(io.readproc'pkg-config --cflags hdf5'),
+		flags = pkgconfigFlags'hdf5',
 		final = function(code)
 			-- old header comment:
 				-- for gcc / ubuntu looks like off_t is defined in either unistd.h or stdio.h, and either are set via testing/setting __off_t_defined
@@ -2083,7 +2088,7 @@ return require 'ffi.load' 'OpenCL'
 		inc = '<tiffio.h>',
 		out = ffi.os..'/tiff.lua',
 		os = ffi.os,
-		flags = string.trim(io.readproc'pkg-config --cflags libtiff-4'),
+		flags = pkgconfigFlags'libtiff-4',
 	},
 
 	-- apt install libjpeg-turbo-dev
@@ -2171,7 +2176,7 @@ return require 'ffi.load' 'GL'
 		inc = '<lua.h>',
 		moreincs = {'<lualib.h>', '<lauxlib.h>'},
 		out = 'lua.lua',
-		flags = string.trim(io.readproc'pkg-config --cflags lua'),
+		flags = pkgconfigFlags'lua',
 		final = function(code)
 			code = [[
 ]] .. code .. [[
@@ -2296,7 +2301,7 @@ also HDF5 has a lot of unused enums ...
 	{
 		inc = '<SDL2/SDL.h>',
 		out = 'sdl.lua',
-		flags = string.trim(io.readproc'pkg-config --cflags sdl2'),
+		flags = pkgconfigFlags'sdl2',
 		silentincs = {
 			'<immintrin.h>',
 		},
@@ -2469,13 +2474,13 @@ return require 'ffi.load' 'openal'
 		inc = '<Python.h>',
 		out = 'python.lua',
 		-- -I/usr/include/python3.11 -I/usr/include/x86_64-linux-gnu/python3.11
-		flags = '-D__NO_INLINE__ -DPIL_NO_INLINE '..string.trim(io.readproc('pkg-config --cflags python3')),
+		flags = '-D__NO_INLINE__ -DPIL_NO_INLINE '..(pkgconfigFlags'python3' or ''),
 	},
 
 	{
 		inc = '<mono/jit/jit.h>',
 		out = 'mono.lua',
-		flags = string.trim(io.readproc('pkg-config --cflags mono-2')),
+		flags = pkgconfigFlags'mono-2',
 		final = function(code)
 			-- enums are ints right ... ?
 			code = safegsub(code, 'typedef (enum %b{})%s*([_%a][_%w]*);', '%1; typedef int %2;')

@@ -280,7 +280,7 @@ if ffi.os == 'Windows' then
 
 
 	-- [=[ <sal.h> has these:  (included by <vcruntime.h>)
-	for l in io.lines[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\include\sal.h]] do
+	for l in io.lines[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.39.33519\include\sal.h]] do
 		local rest = l:match'^#define%s+(.*)$'
 		if rest then
 			local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
@@ -303,15 +303,15 @@ if ffi.os == 'Windows' then
 	-- how to know where these are?
 	preproc:addIncludeDirs({
 		-- what's in my VS 2022 Project -> VC++ Directories -> General -> Include Directories
-		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\include]],
-		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.36.32532\atlmfc\include]],
+		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.39.33519\include]],
+		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.39.33519\atlmfc\include]],
 		[[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\VS\include]],
-		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\ucrt]],
-		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\um]],
-		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\shared]],
-		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\winrt]],
-		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\cppwinrt]],
-		[[C:\Program Files (x86)\Windows Kits\NETFXSDK\4.6.1\Include\um]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt]],
+		[[C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\cppwinrt]],
+		[[C:\Program Files (x86)\Windows Kits\NETFXSDK\4.8\Include\um]],
 	}, true)
 else	-- assume everything else uses gcc
 	assert(os.execute'gcc --version > /dev/null 2>&1', "failed to find gcc")	-- make sure we have gcc

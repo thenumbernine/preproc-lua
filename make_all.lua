@@ -3,6 +3,7 @@
 local ffi = require 'ffi'
 local path = require 'ext.path'
 local table = require 'ext.table'
+local os = require 'ext.os'
 
 -- this holds the stuff thats working already
 -- but it's a separate file for the sake of generate.lua looking to see what to replace with require()'s
@@ -15,9 +16,23 @@ includeList = includeList:filter(function(inc)
 	return true
 end)
 
-local req = ...
+local luajit = 'luajit'
+
+local req = table{...}
+-- see if we got any options ...
+for i=#req,1,-1 do
+	if req[i]:sub(1,7) == 'luajit=' then
+		luajit = req[i]:sub(8)
+		print('setting luajit to '..luajit)
+		req:remove(i)
+	end
+end
+
+req = req[1]
+
 if not req then error("make_all.lua all for all, or make_all.lua <some filename>") end
 if req ~= 'all' then
+	
 	-- TODO seems using <> or "" now is essential for excluding recursive require's
 	if req:sub(1,1) ~= '<' and req:sub(1,1) ~= '"' then
 		error('must be system (<...>) or user ("...") include space')
@@ -30,11 +45,6 @@ if req ~= 'all' then
 	if #includeList == 0 then
 		error("couldn't find "..req)
 	end
-end
-
-local function exec(cmd)
-	print('>'..cmd)
-	return os.execute(cmd)
 end
 
 local outdirbase = 'results'	-- outdir without ffi/
@@ -54,7 +64,7 @@ local ffi = require 'ffi'
 ffi.cdef[[
 ]=]
 			local cmd = table{
-				'luajit',
+				luajit,
 				'generate.lua'
 			}
 			if inc.flags then
@@ -91,7 +101,7 @@ ffi.cdef[[
 				'"'..outpath..'"',
 			}
 			cmd = cmd:concat' '
-			print(exec(cmd))
+			print(os.exec(cmd))
 			path(outpath):append[=[
 ]]
 ]=]
@@ -118,10 +128,10 @@ ffi.cdef[[
 		-- can't use -lext because that will load ffi/c stuff which could cause clashes in cdefs
 		-- luajit has loadfile, nice.
 		--[=[ use loadfile ... and all the old/original ffi locations
-		print(exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
+		print(os.exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
 		--]=]
 		-- [=[ use require, and base it in the output folder
-		print(exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.req' ']]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
+		print(os.exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.req' ']]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
 		--]=]
 	end
 end

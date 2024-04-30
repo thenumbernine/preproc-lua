@@ -4,11 +4,10 @@ local table = require 'ext.table'
 local string = require 'ext.string'
 local io = require 'ext.io'
 local os = require 'ext.os'
-local class = require 'ext.class'
 local tolua = require 'ext.tolua'
 
 local Preproc = require 'preproc'
-local ThisPreproc = class(Preproc)
+local ThisPreproc = Preproc:subclass()
 
 -- this is assigned below when args are processed
 local incfiles

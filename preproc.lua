@@ -1198,7 +1198,7 @@ function Preproc:__call(args)
 				-- false = current condition is false
 				local eval = true
 				if #ifstack > 0 then
-					for i,b in ipairs(ifstack) do
+					for j,b in ipairs(ifstack) do
 						if b[1] == false then
 							eval = false
 							break
@@ -1208,8 +1208,8 @@ function Preproc:__call(args)
 
 				local preveval = true
 				if #ifstack > 0 then
-					for i=1,#ifstack-1 do
-						if ifstack[i][1] == false then
+					for j=1,#ifstack-1 do
+						if ifstack[j][1] == false then
 							preveval = false
 							break
 						end
@@ -1221,6 +1221,16 @@ function Preproc:__call(args)
 				if l:sub(1,1) == '#' then
 					local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
 --DEBUG: debugprint('cmd is', cmd, 'rest is', rest)
+
+					-- another windows irritation ...
+					if cmd then
+						local j = cmd:find'%(' 
+						if j then
+							rest = cmd:sub(j)..' '..rest
+							cmd = cmd:sub(1,j-1)
+						end
+					end
+						
 
 					local function closeIf()
 						assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
@@ -1410,7 +1420,7 @@ function Preproc:__call(args)
 								error("couldn't find "..(sys and "system" or "user").." include file "..search..'\n')
 							end
 							if not self.alreadyIncludedFiles[fn] then
---DEBUG: debugprint('include '..fn)
+debugprint(('+'):rep(#self.includeStack+1)..' #include '..fn)
 								lines:insert(i, '/* '..('+'):rep(#self.includeStack+1)..' END   '..fn..' */')
 
 
@@ -1592,7 +1602,12 @@ function Preproc:__call(args)
 		end
 	end, function(err)
 		throwme = table()
+		--[[ too big
 		throwme:insert(require 'template.showcode'(lines:sub(1, i+10):concat'\n'))
+		--]]
+		-- [[ put in file
+		path'~lastfile.lua':write(lines:concat'\n')
+		--]]
 		-- TODO lines should hold the line, the orig line no, and the inc file
 		for _,inc in ipairs(self.includeStack) do
 			throwme:insert(' at '..inc)

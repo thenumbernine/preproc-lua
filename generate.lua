@@ -275,6 +275,12 @@ if ffi.os == 'Windows' then
 
 // annoying macro.  needed at all?
 #define __declspec(x)
+
+
+// trying to find out why my gl.h is blowing up on windows
+// TODO maybe this will break everything else in Windows preproc
+#define WINGDIAPI
+#define APIENTRY
 ]]
 
 
@@ -299,6 +305,22 @@ if ffi.os == 'Windows' then
 	skipfiles:insert'<vcruntime.h>'
 	--skipfiles:insert'<vcruntime_string.h>'	-- has memcpy ... wonder why did I remove this?
 	--skipfiles:insert'<corecrt_memcpy_s.h>'	-- contains inline functions
+	
+	-- trying to find out why my gl.h is blowing up on windows
+	-- TODO maybe this will break everything else in Windows preproc
+	skipfiles:insert'<sdkddkver.h>'
+	skipfiles:insert'<excpt.h>'
+	--skipfiles:insert'<windef.h>'
+	--skipfiles:insert'<minwindef.h>'
+	--skipfiles:insert'<winbase.h>'
+	skipfiles:insert'<windows.h>'
+	--skipfiles:insert'<minwindef.h>'
+	skipfiles:insert'<winnt.h>'
+	skipfiles:insert'<winerror.h>'
+	skipfiles:insert'<stdarg.h>'
+	skipfiles:insert'<specstrings.h>'
+	skipfiles:insert'<apiset.h>'
+	skipfiles:insert'<debugapi.h>'
 
 	-- how to know where these are?
 	preproc:addIncludeDirs({

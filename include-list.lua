@@ -2152,12 +2152,14 @@ return setmetatable({
 		final = function(code)
 			if ffi.os == 'Windows' then
 				-- TODO this won't work now that I'm separating out KHRplatform.h ...
-				code = "local code = ''"
-				code = safegsub(code,
+				local oldcode = code
+				code = "local code = ''\n"
+				code = code .. safegsub(oldcode,
 					string.patescape'ffi.cdef',
 					'code = code .. '
 				)
 				code = code .. [[
+ffi.cdef(code)
 local gl = require 'ffi.load' 'GL'
 return setmetatable({
 	code = code,	-- Windows GLApp needs to be able to read the ffi.cdef string for parsing out wglGetProcAddress's

@@ -295,6 +295,7 @@ if ffi.os == 'Windows' then
 	end
 	--]=]
 
+	skipfiles:insert'<sal.h>'
 	skipfiles:insert'<vcruntime.h>'
 	--skipfiles:insert'<vcruntime_string.h>'	-- has memcpy ... wonder why did I remove this?
 	--skipfiles:insert'<corecrt_memcpy_s.h>'	-- contains inline functions

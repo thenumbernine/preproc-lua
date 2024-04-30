@@ -2149,6 +2149,26 @@ return setmetatable({
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,
+		skipincs = ffi.os == 'Windows' and {
+		-- trying to find out why my gl.h is blowing up on windows
+			'<sdkddkver.h>',
+			'<excpt.h>',
+			--'<windef.h>',
+			--'<minwindef.h>',
+			--'<winbase.h>',
+			'<windows.h>',
+			--'<minwindef.h>',
+			'<winnt.h>',
+			'<winerror.h>',
+			'<stdarg.h>',
+			'<specstrings.h>',
+			'<apiset.h>',
+			'<debugapi.h>',
+		} or '',
+		macros = ffi.os == 'Windows' and {
+			'WINGDIAPI=',
+			'APIENTRY=',
+		} or nil,
 		final = function(code)
 			if ffi.os == 'Windows' then
 				-- TODO this won't work now that I'm separating out KHRplatform.h ...

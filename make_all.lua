@@ -93,6 +93,9 @@ ffi.cdef[[
 				cmd:insert'-skip'
 				addincarg(f)
 			end
+			for _,m in ipairs(inc.macros or {}) do
+				cmd:insert('-D'..m)
+			end
 			if inc.enumGenUnderscoreMacros then
 				cmd:insert'-enumGenUnderscoreMacros'
 			end

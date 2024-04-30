@@ -462,7 +462,7 @@ in the latest stdio.h there is a multiple-line-spanning-macro, so I can't get ar
 
 and that also might mean I need a tokenizer of some sort, to know when the parenthesis arguments begin and end
 --]]
-function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
+function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString, replaceEmptyWithZero)
 --DEBUG: print('replaceMacros begin: '..l)
 	macros = macros or self.macros
 	-- avoid infinite-recursive macros
@@ -555,6 +555,9 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString)
 							end
 						end
 					else
+						-- stupid windows hack
+						if v == '' and replaceEmptyWithZero then v = '0' end
+
 						local j,k
 						k = 0
 						while true do
@@ -765,7 +768,13 @@ function Preproc:parseCondInt(origexpr)
 	-- does defined() work with macros with args?
 	-- if not then substitute macros with args here
 	-- if so then substitute it in the eval of macros later ...
-	expr = self:replaceMacros(expr, nil, true)
+	-- 
+	-- ok so Windows gl.h will have in their macro if statements `MACRO && stmt` where MACRO is #define'd to be an empty string
+	-- so if we replace macros here then ... we get parse errors on the #if evaluation
+	-- Windows ... smh
+	-- so I've added a 5th arg to replaceMacros to substitute empty-strings with 0's .... sounds like a horrible idea ... 
+	-- ... that's right Windows, it was a horrible idea to implicitly cast empty string macros to zeroes in macro statements.
+	expr = self:replaceMacros(expr, nil, true, nil, true)
 --DEBUG: print('after macros:', expr)
 
 	local col = 1

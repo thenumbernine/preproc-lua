@@ -2324,7 +2324,13 @@ also HDF5 has a lot of unused enums ...
 		inc = '<SDL2/SDL.h>',
 		out = 'sdl.lua',
 		flags = pkgconfigFlags'sdl2',
-		silentincs = {
+		includedirs = ffi.os == 'Windows' and {
+			[[C:\Users\Chris\include\SDL2]],
+		} or nil,
+		skipincs = ffi.os == 'Windows' and {
+			'<immintrin.h>',
+		} or {},
+		silentincs = ffi.os == 'Windows' and {} or {
 			'<immintrin.h>',
 		},
 		final = function(code)

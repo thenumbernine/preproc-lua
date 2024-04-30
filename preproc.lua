@@ -1580,7 +1580,12 @@ function Preproc:__call(args)
 			throwme:insert(' at '..inc)
 		end
 		throwme:insert('at line: '..i)
+		--[[ output?  it's big so ...
 		throwme:insert('macros: '..tolua(self.macros))
+		--]]
+		-- [[ so just put it in a file 
+		path'~macros.lua':write(tolua(self.macros))
+		--]]
 		throwme:insert(err..'\n'..debug.traceback())
 		throwme = throwme:concat'\n'
 	end)

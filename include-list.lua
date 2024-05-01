@@ -2151,6 +2151,7 @@ return setmetatable({
 		os = ffi.os,
 		skipincs = ffi.os == 'Windows' and {
 		-- trying to find out why my gl.h is blowing up on windows
+			'<winapifamily.h>',	-- verify please
 			'<sdkddkver.h>',
 			'<excpt.h>',
 			--'<windef.h>',

@@ -1295,6 +1295,20 @@ return setmetatable({}, {
 			return code
 		end,
 	},
+	
+	{
+		inc='<archive.h>',
+		moreincs = {
+			'<archive_entry.h>',
+		},
+		out='archive.lua',
+		final = function(code)
+			code = code .. [[
+return require 'ffi.load' 'archive'
+]]
+			return code
+		end,
+	},
 
 }:mapi(function(inc)
 	inc.os = 'Linux'	-- meh?
@@ -2037,7 +2051,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 			'"imgui_impl_opengl3.h"',
 		},
 		silentincs = {'"imgui.h"'},	-- full of C++ so don't include it
-		flags = '-I/usr/local/include/imgui-1.89.7dock -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
+		flags = '-I/usr/local/include/imgui-1.90.5dock -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS',
 		out = 'cimgui.lua',
 		final = function(code)
 			-- this is already in SDL

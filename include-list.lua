@@ -742,7 +742,10 @@ includeList:append(table{
 	-- used by c/pthread, c/sys/types, c/signal
 	{
 		inc = '<bits/pthreadtypes.h>',
-		out = 'Linux/c/pthreadtypes.lua',
+		silentincs = {
+			'<features.h>',
+		},
+		out = 'Linux/c/bits/pthreadtypes.lua',
 	},
 
 	-- depends: features.h bits/types.h sys/select.h
@@ -781,11 +784,7 @@ includeList:append(table{
 	end},
 
 	-- depends: features.h stddef.h bits/libc-header-start.h
-	{inc='<string.h>', out='Linux/c/string.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		code = remove_need_macro(code)
-		return code
-	end},
+	{inc='<string.h>', out='Linux/c/string.lua'},
 
 	-- depends: features.h stddef.h bits/types.h and too many really
 	-- this and any other file that requires stddef might have these lines which will have to be removed:
@@ -793,7 +792,6 @@ includeList:append(table{
 		inc = '<time.h>',
 		out = 'Linux/c/time.lua',
 		final = function(code)
-			code = remove_need_macro(code)
 			code = replace_bits_types_builtin(code, 'pid_t')
 			return code
 		end,
@@ -869,15 +867,12 @@ return statlib
 		inc = '<stdint.h>',
 		out = 'Linux/c/stdint.lua',
 		final = function(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-
 			--code = replace_bits_types_builtin(code, 'intptr_t')
 			-- not the same def ...
 			code = safegsub(
 				code,
 				[[
 typedef long int intptr_t;
-enum { __intptr_t_defined = 1 };
 ]],
 				[=[]] require 'ffi.req' 'c.bits.types.intptr_t' ffi.cdef[[]=]
 			)
@@ -907,15 +902,7 @@ enum { WCHAR_MAX = 2147483647 };
 	},
 
 	-- depends: features.h sys/types.h
-	{
-		inc = '<stdlib.h>',
-		out = 'Linux/c/stdlib.lua',
-		final = function(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			code = remove_need_macro(code)
-			return code
-		end,
-	},
+	{inc = '<stdlib.h>', out = 'Linux/c/stdlib.lua'},
 
 	{
 		inc = '<bits/types/__mbstate_t.h>',
@@ -932,16 +919,7 @@ enum { WCHAR_MAX = 2147483647 };
 
 	-- depends on: bits/types/__mbstate_t.h
 	-- I never needed it in Linux, until I got to SDL
-	{
-		inc = '<wchar.h>',
-		out = 'Linux/c/wchar.lua',
-		final = function(code)
-			code = remove_VA_LIST_DEFINED(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			code = remove_need_macro(code)
-			return code
-		end,
-	},
+	{inc = '<wchar.h>', out = 'Linux/c/wchar.lua'},
 
 	-- depends: bits/wordsize.h
 	{
@@ -955,10 +933,7 @@ enum { WCHAR_MAX = 2147483647 };
 	-- and that comes with a giant can of worms of how i'm handling cdef numbers vs macro defs vs lua numbers ...
 	-- mind you I could just make the warning: output into a comment
 	--  and there would be no need for manual manipulation here
-	{inc='<limits.h>', out='Linux/c/limits.lua', final=function(code)
-		code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-		return code
-	end},
+	{inc='<limits.h>', out='Linux/c/limits.lua'},
 
 	-- depends: features.h, bits/types/__sigset_t.h
 	{inc='<setjmp.h>', out='Linux/c/setjmp.lua'},
@@ -978,7 +953,6 @@ enum { WCHAR_MAX = 2147483647 };
 			} do
 				code = replace_bits_types_builtin(code, t)
 			end
-			code = remove_need_macro(code)
 
 			-- both unistd.h and stdio.h have SEEK_* defined, so ...
 			-- you'll have to manually create this file
@@ -1026,17 +1000,11 @@ return ffi.C
 	-- depends: stddef.h bits/types/time_t.h bits/types/struct_timespec.h
 	{inc='<sched.h>', out='Linux/c/sched.lua', final=function(code)
 		code = replace_bits_types_builtin(code, 'pid_t')
-		code = remove_need_macro(code)
 		return code
 	end},
 
 	-- depends on too much
 	{inc='<stdarg.h>', out='Linux/c/stdarg.lua', final=function(code)
-		-- stdio.h and stdarg.h both define this
-		-- typedef __gnuc_va_list va_list;
-		-- enum { _VA_LIST_DEFINED = 1 };
-		-- so maybe I should put it in its own manual file?
-		code = remove_VA_LIST_DEFINED(code)
 		code = replace_va_list_require(code)
 		return code
 	end},
@@ -1061,11 +1029,8 @@ return ffi.C
 		inc = '<stdio.h>',
 		out = 'Linux/c/stdio.lua',
 		final = function(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 			code = replace_bits_types_builtin(code, 'off_t')
 			code = replace_bits_types_builtin(code, 'ssize_t')
-			code = remove_need_macro(code)
-			code = remove_VA_LIST_DEFINED(code)
 			code = replace_va_list_require(code)
 			-- this is in stdio.h and unistd.h
 			code = replace_SEEK(code)
@@ -1091,10 +1056,6 @@ return setmetatable({}, {
 		inc = '<math.h>',
 		out = 'Linux/c/math.lua',
 		final = function(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			code = safegsub(code, 'enum { __MATH_DECLARING_DOUBLE = %d+ };', '')
-			code = safegsub(code, 'enum { __MATH_DECLARING_FLOATN = %d+ };', '')
-
 			-- [[ enums and #defines intermixed ... smh
 			code = safegsub(code, ' ([_%a][_%w]*) = enum { ([_%a][_%w]*) = %d+ };', function(a,b)
 				if a == b then return ' '..a..' = ' end
@@ -1135,7 +1096,6 @@ return setmetatable({}, {
 		out = 'Linux/c/dirent.lua',
 		final = function(code)
 			code = fixEnumsAndDefineMacrosInterleaved(code)
-			code = remove_need_macro(code)
 			return code
 		end,
 	},
@@ -1164,8 +1124,8 @@ return setmetatable({}, {
 			code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
 			code = commentOutLine(code, 'enum { SI_USER = 0 };')
 			code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
-			code = commentOutLine(code, 'enum { ILL_%w+ = 0 };')
-			code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+			--code = commentOutLine(code, 'enum { ILL_%w+ = 0 };')
+			--code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
 
 			code = commentOutLine(code, 'enum { ILL_ILLOPC = 0 };')
 			code = commentOutLine(code, 'enum { ILL_ILLOPN = 0 };')
@@ -1195,6 +1155,7 @@ return setmetatable({}, {
 			code = commentOutLine(code, 'enum { SEGV_ADIPERR = 0 };')
 			code = commentOutLine(code, 'enum { SEGV_MTEAERR = 0 };')
 			code = commentOutLine(code, 'enum { SEGV_MTESERR = 0 };')
+			code = commentOutLine(code, 'enum { SEGV_CPERR = 0 };')
 			code = commentOutLine(code, 'enum { BUS_ADRALN = 0 };')
 			code = commentOutLine(code, 'enum { BUS_ADRERR = 0 };')
 			code = commentOutLine(code, 'enum { BUS_OBJERR = 0 };')
@@ -1225,21 +1186,6 @@ return setmetatable({}, {
 
 	{inc='<sys/param.h>', out='Linux/c/sys/param.lua', final=function(code)
 		code = fixEnumsAndDefineMacrosInterleaved(code)
-		-- i think all these stem from #define A B when the value is a string and not numeric
-		--  but my #define to enum inserter forces something to be produced
-		code = commentOutLine(code, 'enum { SIGIO = 0 };')
-		code = commentOutLine(code, 'enum { SIGCLD = 0 };')
-		code = commentOutLine(code, 'enum { SI_DETHREAD = 0 };')
-		code = commentOutLine(code, 'enum { SI_TKILL = 0 };')
-		code = commentOutLine(code, 'enum { SI_SIGIO = 0 };')
-		code = commentOutLine(code, 'enum { SI_ASYNCIO = 0 };')
-		code = commentOutLine(code, 'enum { SI_MESGQ = 0 };')
-		code = commentOutLine(code, 'enum { SI_TIMER = 0 };')
-		code = commentOutLine(code, 'enum { SI_QUEUE = 0 };')
-		code = commentOutLine(code, 'enum { SI_USER = 0 };')
-		code = commentOutLine(code, 'enum { SI_KERNEL = 0 };')
-		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
-		code = remove_need_macro(code)
 		return code
 	end},
 
@@ -1329,12 +1275,10 @@ includeList:append(table{
 			-- why am I generating an enum for it?
 			-- and now just replace the rest with nothing
 			code = safegsub(code, 'enum { FAR = 1 };\n', '')
-			code = safegsub(code, ' FAR ', ' ')
 			-- same deal with z_off_t
 			-- my preproc => luajit can't handle defines that are working in place of typedefs
 			code = safegsub(code, 'enum { z_off_t = 0 };\n', '')
 			code = safegsub(code, 'enum { z_off64_t = 0 };\n', '')
-			code = safegsub(code, 'z_off_t', 'off_t')
 
 			-- add some macros onto the end manually
 			code = code .. [[
@@ -2058,6 +2002,7 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 			code = safegsub(code,
 				string.patescape'struct SDL_Window;'..'\n'
 				..string.patescape'struct SDL_Renderer;'..'\n'
+				..string.patescape'struct _SDL_GameController;'..'\n'
 				..string.patescape'typedef union SDL_Event SDL_Event;',
 
 				-- simultaneously insert require to ffi/sdl.lua
@@ -2066,6 +2011,10 @@ return require 'ffi.load' 'hdf5'	-- pkg-config --libs hdf5
 
 			-- looks like in the backend file there's one default parameter value ...
 			code = safegsub(code, 'glsl_version = nullptr', 'glsl_version')
+
+			code = safegsub(code, 'enum ImGui_ImplSDL2_GamepadMode {([^}]-)};', 'typedef enum {%1} ImGui_ImplSDL2_GamepadMode;')
+			code = safegsub(code, string.patescape'manual_gamepads_array = ((void *)0)', 'manual_gamepads_array')
+			code = safegsub(code, string.patescape'manual_gamepads_count = -1', 'manual_gamepads_count')
 
 			code = code .. [[
 return require 'ffi.load' 'cimgui_sdl'
@@ -2179,7 +2128,7 @@ return setmetatable({
 			'<specstrings.h>',
 			'<apiset.h>',
 			'<debugapi.h>',
-		} or '',
+		} or {},
 		macros = ffi.os == 'Windows' and {
 			'WINGDIAPI=',
 			'APIENTRY=',
@@ -2279,9 +2228,6 @@ return require 'ffi.load' 'zip'
 
 	-- produces an "int void" because macro arg-expansion covers already-expanded macro-args
 	{inc='<png.h>', out='png.lua', final=function(code)
-		-- warning for redefining LLONG_MIN or something
-		code = removeWarnings(code)
-
 		-- TODO remove contents of pnglibconf.h, or at least the PNG_*_SUPPORTED macros
 
 		-- still working out macro bugs ... if macro expands arg A then I don't want it to expand arg B
@@ -2349,11 +2295,6 @@ also HDF5 has a lot of unused enums ...
 			'<immintrin.h>',
 		},
 		final = function(code)
-			code = remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-			-- warning: redefining __MATH_DECLARING_DOUBLE from 1 to 0 (originally 0)
-			-- warning: redefining __MATH_DECLARING_FLOATN from 0 to 1 (originally 1)
-			code = removeWarnings(code)
-
 			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
 
 			-- TODO evaluate this and insert it correctly?
@@ -2572,7 +2513,7 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 			end
 			code = lines:concat'\n'
 			-- undefs of static inline functions ...
-			for f in ([[PA_CONTEXT_IS_GOOD PA_STREAM_IS_GOOD PA_SINK_IS_OPENED PA_SINK_IS_RUNNING PA_SOURCE_IS_OPENED PA_SOURCE_IS_RUNNING _pa_xnew_internal _pa_xnew0_internal _pa_xrenew_internal]]):gmatch'%S+' do
+			for f in ([[PA_CONTEXT_IS_GOOD PA_STREAM_IS_GOOD PA_SINK_IS_OPENED PA_SOURCE_IS_OPENED]]):gmatch'%S+' do
 				code = removeStaticInlineFunction(code, f)
 				code = safegsub(code, 'enum { '..f..' = 0 };', '')
 			end

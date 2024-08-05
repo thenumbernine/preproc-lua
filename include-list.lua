@@ -1241,7 +1241,7 @@ return setmetatable({}, {
 			return code
 		end,
 	},
-	
+
 	{
 		inc='<archive.h>',
 		moreincs = {
@@ -2297,6 +2297,9 @@ also HDF5 has a lot of unused enums ...
 		final = function(code)
 			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
 
+			-- TODO comment out SDL2/SDL_config.h ... or just put it in silentincs ?
+			-- same with float.h
+
 			-- TODO evaluate this and insert it correctly?
 			code = code .. [=[
 ffi.cdef[[
@@ -2517,6 +2520,29 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 				code = removeStaticInlineFunction(code, f)
 				code = safegsub(code, 'enum { '..f..' = 0 };', '')
 			end
+			return code
+		end,
+	},
+
+	{
+		inc = '<vulkan/vulkan_core.h>',
+		flags = '-I/usr/include/vulkan -I/usr/include/vk_video',
+		out = 'vulkan.lua',
+		final = function(code)
+			local postdefs = table()
+			code = code:gsub('static const (%S+) (%S+) = ([0-9x]+)ULL;\n',
+				-- some of these rae 64bit numbers ... I should put them in lua tables as uint64_t's
+				--'enum { %2 = %3 };'
+				function(ctype, name, value)
+					postdefs:insert(name.." = ffi.new('"..ctype.."', "..value..")")
+					return ''
+				end
+			)
+			code = code .. '\n'
+				.."local lib = require 'ffi.load' 'vulkan'\n"
+				.."return setmetatable({\n"
+				..postdefs:mapi(function(l) return '\t'..l..',' end):concat'\n'..'\n'
+				.."}, {__index=lib})\n"
 			return code
 		end,
 	},

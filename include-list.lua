@@ -1275,15 +1275,29 @@ end))
 
 -- [====[ Begin OSX-specific:
 includeList:append(table{
+	{inc='<AvailabilityVersions.h>', out='OSX/c/AvailabilityVersions.lua'},
+
+	-- depends on <AvailabilityVersions.h>
+	-- ... SDL.h on OSX separately includes AvailabilityMacros.h without Availability.h
+	-- ... and both Availability.h and AvailabilityMacros.h points to AvailabilityVersions.h
+	-- (so maybe I could avoid this one file and just let its contents embed into sdl.lua ...)
+	{inc='<AvailabilityMacros.h>', out='OSX/c/AvailabilityMacros.lua'},
+
+	-- depends on <AvailabilityMacros.h> and <AvailabilityVersions.h>
 	{inc='<Availability.h>', out='OSX/c/Availability.lua'},
+
+	{inc='<machine/_types.h>', out='OSX/c/machine/_types.lua'},
+
+	{inc='<machine/endian.h>', out='OSX/c/machine/endian.lua'},
 
 	{inc='<sys/_pthread/_pthread_types.h>', out='OSX/c/sys/_pthread/_pthread_types.lua'},
 
-	-- depends on <sys/_pthread/_pthread_types.h>
+	-- depends on <sys/_pthread/_pthread_types.h> <machine/_types.h>
 	{inc='<_types.h>', out='OSX/c/_types.lua'},
 
 	{inc='<sys/_types/_timespec.h>', out='OSX/c/sys/_types/_timespec.lua'},
 
+	-- depends on <machine/_types.h>
 	{inc='<sys/_types/_timeval.h>', out='OSX/c/sys/_types/_timeval.lua'},
 
 	{inc='<sys/_types/_fd_def.h>', out='OSX/c/sys/_types/_fd_def.lua'},
@@ -1300,12 +1314,15 @@ includeList:append(table{
 		end,
 	},
 
+	-- TODO might end up adding sys/_types.h ...
+	-- it depends on machine/_types.h
+
 	{inc='<stddef.h>', out='OSX/c/stddef.lua'},
 
-	-- depends on <_types.h>
+	-- depends on <_types.h> <machine/_types.h>
 	{inc='<sys/ioctl.h>', out='OSX/c/sys/ioctl.lua'},
 
-	-- depends on <_types.h> <sys/_types/_timespec.h> <sys/_types/_fd_def.h>
+	-- depends on <_types.h> <sys/_types/_timespec.h> <sys/_types/_fd_def.h> <machine/_types.h>
 	{
 		inc='<sys/select.h>',
 		out='OSX/c/sys/select.lua',
@@ -1315,7 +1332,7 @@ includeList:append(table{
 		end,
 	},
 
-	-- depends on <_types.h>
+	-- depends on <_types.h> <machine/_types.h>
 	{
 		inc = '<sys/termios.h>',
 		out = 'OSX/c/sys/termios.lua',
@@ -1325,10 +1342,10 @@ includeList:append(table{
 		end,
 	},
 
-	-- depends on <_types.h> <sys/_types/_fd_def.h>
+	-- depends on <_types.h> <sys/_types/_fd_def.h> <machine/_types.h> <machine/endian.h>
 	{inc='<sys/types.h>', out='OSX/c/sys/types.lua'},
 
-	-- depends on <_types.h>
+	-- depends on <_types.h> <machine/_types.h>
 	{
 		inc='<string.h>',
 		out='OSX/c/string.lua',
@@ -1338,7 +1355,7 @@ includeList:append(table{
 		end,
 	},
 
-	-- depends on <_types.h> <sys/_types/_timespec.h>
+	-- depends on <_types.h> <sys/_types/_timespec.h> <machine/_types.h>
 	{
 		inc = '<time.h>',
 		out = 'OSX/c/time.lua',
@@ -1383,7 +1400,7 @@ return setmetatable({
 		end,
 	},
 
-	-- depends on <_types.h> <sys/_types/_timespec.h>
+	-- depends on <_types.h> <sys/_types/_timespec.h> <machine/_types.h>
 	{
 		inc = '<sys/stat.h>',
 		out = 'OSX/c/sys/stat.lua',
@@ -1408,9 +1425,10 @@ return statlib
 		end,
 	},
 
-	-- depends on <_types.h>
+	-- depends on <_types.h> <machine/_types.h>
 	{inc = '<stdint.h>', out = 'OSX/c/stdint.lua'},
 
+	-- depends on <machine/_types.h>
 	{
 		inc = '<sys/signal.h>',
 		out='OSX/c/sys/signal.lua',
@@ -1428,7 +1446,7 @@ return statlib
 		end,
 	},
 
-	-- depends on <sys/signal.h>, <_types.h>
+	-- depends on <sys/signal.h>, <_types.h> <machine/_types.h> <machine/endian.h>
 	{
 		inc = '<stdlib.h>',
 		out = 'OSX/c/stdlib.lua',
@@ -1452,7 +1470,7 @@ return statlib
 
 	{inc='<setjmp.h>', out='OSX/c/setjmp.lua'},
 
-	-- depends: features.h bits/types.h
+	-- depends: <features.h> <machine/_types.h>
 	{
 		inc = '<unistd.h>',
 		out = 'OSX/c/unistd.lua',
@@ -1478,8 +1496,10 @@ return ffi.C
 		return code
 	end},
 
+	-- depends on <machine/_types.h>
 	{inc='<inttypes.h>', out='OSX/c/inttypes.lua'},
 
+	-- depends on <machine/_types.h>
 	{
 		inc = '<stdio.h>',
 		out = 'OSX/c/stdio.lua',
@@ -1497,12 +1517,15 @@ return setmetatable({}, {
 		end,
 	},
 
-	-- depends on stdio.h
+	-- depends on <stdio.h> <machine/_types.h>
 	{
 		inc = '<wchar.h>',
 		out = 'OSX/c/wchar.lua',
 		final = function(code)
 			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			-- these are duplicated in <wchar.h> and in <stdint.h>
+			code = commentOutLine(code, 'enum { WCHAR_MIN = -2147483648 };')
+			code = commentOutLine(code, 'enum { WCHAR_MAX = 2147483647 };')
 			return code
 		end,
 	},
@@ -1540,13 +1563,13 @@ return setmetatable({}, {
 		end,
 	},
 
-	-- depends on <sys/syslimits.h>
+	-- depends on <sys/syslimits.h> <machine/_types.h>
 	{inc='<sys/param.h>', out='OSX/c/sys/param.lua', final=function(code)
 		code = fixEnumsAndDefineMacrosInterleaved(code)
 		return code
 	end},
 
-	-- depends on <sys/_types/_timespec.h> <sys/_types/_fd_def.h>
+	-- depends on <sys/_types/_timespec.h> <sys/_types/_fd_def.h> <machine/_types.h>
 	{
 		inc = '<sys/time.h>',
 		out = 'OSX/c/sys/time.lua',
@@ -2429,7 +2452,7 @@ return setmetatable({
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc = ffi.os ~= 'OSX' 
+		inc = ffi.os ~= 'OSX'
 			and '<GL/gl.h>'				-- typical location
 			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
 		moreincs = ffi.os ~= 'OSX' and {'<GL/glext.h>'} or nil,
@@ -2614,15 +2637,12 @@ also HDF5 has a lot of unused enums ...
 		inc = '<SDL2/SDL.h>',
 		out = 'sdl.lua',
 		flags = pkgconfigFlags'sdl2',
-		includedirs = ffi.os == 'Windows' and {
-			[[C:\Users\Chris\include\SDL2]],
-		} or nil,
-		skipincs = ffi.os == 'Windows' and {
-			'<immintrin.h>',
-		} or {},
-		silentincs = ffi.os == 'Windows' and {} or {
-			'<immintrin.h>',
-		},
+		includedirs = ({
+			Windows = {[[C:\Users\Chris\include\SDL2]]},
+			OSX = {[[/usr/local/Cellar/sdl2/2.30.6/include/SDL2/]]},
+		})[ffi.os],
+		skipincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {'<immintrin.h>'} or {},
+		silentincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {} or {'<immintrin.h>'},
 		final = function(code)
 			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
 

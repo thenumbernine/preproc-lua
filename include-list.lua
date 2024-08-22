@@ -33,7 +33,6 @@ local function safegsub(s, from, to, ...)
 	return s
 end
 
-
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	return safegsub(
 		code,
@@ -2430,8 +2429,11 @@ return setmetatable({
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc = ffi.os == 'OSX' and '<OpenGL/OpenGL.h>' or '<GL/gl.h>',
-		moreincs = {'<GL/glext.h>'},
+		inc = ffi.os ~= 'OSX' 
+			and '<GL/gl.h>'				-- typical location
+			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
+		moreincs = ffi.os ~= 'OSX' and {'<GL/glext.h>'} or nil,
+		includedirs = ffi.os == 'OSX' and {'.'} or nil,
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,

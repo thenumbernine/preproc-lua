@@ -1,3 +1,9 @@
+local assertindex = require 'ext.assert'.index
+local asserttype = require 'ext.assert'.type
+local assertlen = require 'ext.assert'.len
+local asserteq = require 'ext.assert'.eq
+local assertne = require 'ext.assert'.ne
+local assertgt = require 'ext.assert'.gt
 local string = require 'ext.string'
 local table = require 'ext.table'
 local tolua = require 'ext.tolua'
@@ -187,7 +193,7 @@ function Preproc:getDefineCode(k, v, l)
 			self.generatedEnums[k] = v
 
 			if replaceline then
-				assert(type(v) == 'string')
+				asserttype(v, 'string')
 				-- [[ insert in-place? this will cause a luajit error
 				if not v:match'%.'		-- no floats
 				and not v:match'%de[+-]%d'	-- no exps
@@ -380,21 +386,48 @@ EDABC(x)
 				if parcount == 0 then
 					local paramvalue = paramStr:sub(last, i-1)
 					paramIndex = paramIndex + 1
-					paramMap[vparams[paramIndex]] = paramvalue
+
+					if #vparams == 1 and vparams[1] == '...' then
+						-- varargs ... use ... indexes?  numbers?  strings?
+						paramMap[paramIndex] = paramvalue
+					else
+						if not vparams[paramIndex] then
+							error('failed to find paramIndex '..tostring(paramIndex)..'\n'
+								..' key='..tostring(key)..'\n'	-- macro name
+								..' vparams='..require'ext.tolua'(vparams)..'\n'	-- macro arguments
+								--..' paramStr='..tostring(paramStr)..'\n'
+								..' paramvalue='..tostring(paramvalue)..'\n'
+								..' l='..tostring(l)..'\n'	-- line we are replacing
+								..' paramMap='..tolua(paramMap)..'\n'
+							)
+						end
+						paramMap[vparams[paramIndex]] = paramvalue
+					end
 					last = i + 1
 				end
 			end
 			i = i + 1
 		end
-		assert(parcount == 0, "macro mismatched ()'s")
+		asserteq(parcount, 0, "macro mismatched ()'s")
 		local paramvalue = paramStr:sub(last)
 		paramIndex = paramIndex + 1
-		local macrokey = vparams[paramIndex]
+
+		if #vparams == 1 and vparams[1] == '...' then
+			-- varargs
+			paramMap[paramIndex] = paramvalue
+		else
+			local macrokey = vparams[paramIndex]
 --DEBUG(Preproc:handleMacroWithArgs): debugprint('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
-		paramMap[macrokey] = paramvalue
+			paramMap[macrokey] = paramvalue
+		end
 	end
 
-	assert(paramIndex == #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
+	-- if we were vararg matching this whole time ... should I replace it with a single-arg and concat the values?
+	if #vparams == 1 and vparams[1] == '...' then
+		paramMap = {['...'] = table.mapi(paramMap, function(v) return tostring(v) end):concat', '}
+	else
+		asserteq(paramIndex, #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
+	end
 
 	return j, k, paramMap
 end
@@ -517,6 +550,64 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString, re
 --DEBUG(Preproc:replaceMacros): local oldl = l
 				l = l:sub(1,j-1) .. ' ' .. l:sub(k+1)
 --DEBUG(Preproc:replaceMacros): debugprint('from', oldl, 'to', l)
+				found = true
+			end
+		end
+		-- clang __has_include
+		if not found then
+			local j, k, paramMap = self:handleMacroWithArgs(l, '__has_include', {'x'})
+			if j then
+
+				-- same as include_next
+				local sys = true
+				local fn = paramMap.x:match'^<(.*)>$'
+				if not fn then
+					sys = false
+					fn = paramMap.x:match'^"(.*)"$'
+				end
+				if not fn then
+					error("include expected file: "..l)
+				end
+				fn = self:searchForInclude(fn, sys)
+
+				l = l:sub(1,j-1)..' '
+					..(fn and '1' or '0')
+					..' '..l:sub(k+1)
+
+				found = true
+			end
+		end
+		-- clang __has_include_next
+		if not found then
+			local j, k, paramMap = self:handleMacroWithArgs(l, '__has_include_next', {'x'})
+			if j then
+
+				-- same as include_next
+				local sys = true
+				local fn = paramMap.x:match'^<(.*)>$'
+				if not fn then
+					sys = false
+					fn = paramMap.x:match'^"(.*)"$'
+				end
+				if not fn then
+					error("include expected file: "..l)
+				end
+
+				local foundPrevIncludeDir
+				for i=#self.includeStack,1,-1 do
+					local includeNextFile = self.includeStack[i]
+					local dir, prevfn = path(includeNextFile):getdir()
+					if prevfn.path == fn then
+						foundPrevIncludeDir = dir.path
+						break
+					end
+				end
+				fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
+
+				l = l:sub(1,j-1)..' '
+					..(fn and '1' or '0')
+					..' '..l:sub(k+1)
+
 				found = true
 			end
 		end
@@ -656,40 +747,40 @@ end
 -- now to evalute the tree
 function Preproc:evalAST(t)
 	if t[1] == 'number' then
-		assert(#t == 2)
+		assertlen(t, 2)
 		return assert(cliteralintegertonumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
-		assert(#t == 2)
+		assertlen(t, 2)
 		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
 	elseif t[1] == '~' then
-		assert(#t == 2)
+		assertlen(t, 2)
 		-- TODO here we are using ffi's bit lib ...
 		return bit.bnot(castnumber(self:evalAST(t[2])))
 	elseif t[1] == '^' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return bit.bxor(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3])))
 	elseif t[1] == '&' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return bit.band(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '|' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return bit.bor(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '<<' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return bit.lshift(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '>>' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return bit.rshift(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
@@ -711,19 +802,19 @@ function Preproc:evalAST(t)
 			return -castnumber(self:evalAST(t[2]))
 		end
 	elseif t[1] == '*' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return castnumber(self:evalAST(t[2]))
 			* castnumber(self:evalAST(t[3]))
 	elseif t[1] == '/' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return castnumber(self:evalAST(t[2]))
 			/ castnumber(self:evalAST(t[3]))
 	elseif t[1] == '%' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return castnumber(self:evalAST(t[2]))
 			% castnumber(self:evalAST(t[3]))
 	elseif t[1] == '&&' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		if castnumber(self:evalAST(t[2])) ~= 0
 		and castnumber(self:evalAST(t[3])) ~= 0
 		then
@@ -731,7 +822,7 @@ function Preproc:evalAST(t)
 		end
 		return 0
 	elseif t[1] == '||' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		if self:evalAST(t[2]) ~= 0
 		or self:evalAST(t[3]) ~= 0
 		then
@@ -739,25 +830,25 @@ function Preproc:evalAST(t)
 		end
 		return 0
 	elseif t[1] == '==' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return (castnumber(self:evalAST(t[2])) == castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>=' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return (castnumber(self:evalAST(t[2])) >= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<=' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return (castnumber(self:evalAST(t[2])) <= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '!=' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return (castnumber(self:evalAST(t[2])) ~= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return (castnumber(self:evalAST(t[2])) > castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<' then
-		assert(#t == 3)
+		assertlen(t, 3)
 		return (castnumber(self:evalAST(t[2])) < castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '?' then
-		assert(#t == 4)
+		assertlen(t, 4)
 		if castnumber(self:evalAST(t[2])) ~= 0 then
 			return castnumber(self:evalAST(t[3]))
 		else
@@ -777,11 +868,11 @@ function Preproc:parseCondInt(origexpr)
 	-- does defined() work with macros with args?
 	-- if not then substitute macros with args here
 	-- if so then substitute it in the eval of macros later ...
-	-- 
+	--
 	-- ok so Windows gl.h will have in their macro if statements `MACRO && stmt` where MACRO is #define'd to be an empty string
 	-- so if we replace macros here then ... we get parse errors on the #if evaluation
 	-- Windows ... smh
-	-- so I've added a 5th arg to replaceMacros to substitute empty-strings with 0's .... sounds like a horrible idea ... 
+	-- so I've added a 5th arg to replaceMacros to substitute empty-strings with 0's .... sounds like a horrible idea ...
 	-- ... that's right Windows, it was a horrible idea to implicitly cast empty string macros to zeroes in macro statements.
 	expr = self:replaceMacros(expr, nil, true, nil, true)
 --DEBUG: debugprint('after macros:', expr)
@@ -1153,7 +1244,7 @@ function Preproc:__call(args)
 		error("can't handle args")
 	end
 
-	local code = assert(args.code, "expected code")
+	local code = assertindex(args, 'code')
 
 	if args.sysIncludeDirs then
 		self:addIncludeDirs(args.sysIncludeDirs, true)
@@ -1191,7 +1282,7 @@ function Preproc:__call(args)
 			if popInc then
 				local last = self.includeStack:remove()
 -- TODO in my nested include() this is getting broken
-				assert(last == popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
+				asserteq(last, popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
 			else
 				-- nil = no condition present
 				-- true = current condition is true
@@ -1224,16 +1315,16 @@ function Preproc:__call(args)
 
 					-- another windows irritation ...
 					if cmd then
-						local j = cmd:find'%(' 
+						local j = cmd:find'%('
 						if j then
 							rest = cmd:sub(j)..' '..rest
 							cmd = cmd:sub(1,j-1)
 						end
 					end
-						
+
 
 					local function closeIf()
-						assert(#ifstack > 0, 'found an #'..cmd..' without an #if')
+						assertgt(#ifstack, 0, 'found an #'..cmd..' without an #if')
 						ifstack:remove()
 					end
 
@@ -1274,7 +1365,7 @@ function Preproc:__call(args)
 								else
 									k = rest
 									v = ''
-									assert(k ~= '', "couldn't find what you were defining: "..l)
+									assertne(k, '', "couldn't find what you were defining: "..l)
 									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --DEBUG: debugprint('defining empty',k,v)
 								end
@@ -1330,10 +1421,10 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'else' then
-						assert(#ifstack > 0, "found an #else without an #if")
+						assertgt(#ifstack, 0, "found an #else without an #if")
 						local oldcond = ifstack:last()
 						local hasprocessed = oldcond[1] or oldcond[2]
-						assert(rest == '', "found trailing characters after "..cmd)
+						asserteq(rest, '', "found trailing characters after "..cmd)
 						ifstack[#ifstack] = {not hasprocessed, hasprocessed}
 						lines:remove(i)
 						i = i - 1
@@ -1356,7 +1447,7 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'endif' then
-						assert(rest == '', "found trailing characters after "..cmd)
+						asserteq(rest, '', "found trailing characters after "..cmd)
 						closeIf()
 						ifHandled = nil
 						lines:remove(i)
@@ -1565,7 +1656,7 @@ debugprint(('+'):rep(#self.includeStack+1)..' #include '..fn)
 								..' */')
 							i = i + 1
 							--]]
-							
+
 							l = prevIncompleteMacroLine .. ' ' .. l
 							-- try to replace the macros ...
 							local nl = self:replaceMacros(l)
@@ -1616,7 +1707,7 @@ debugprint(('+'):rep(#self.includeStack+1)..' #include '..fn)
 		--[[ output?  it's big so ...
 		throwme:insert('macros: '..tolua(self.macros))
 		--]]
-		-- [[ so just put it in a file 
+		-- [[ so just put it in a file
 		path'~macros.lua':write(tolua(self.macros))
 		--]]
 		throwme:insert(err..'\n'..debug.traceback())

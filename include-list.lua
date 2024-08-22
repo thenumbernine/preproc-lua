@@ -1606,7 +1606,13 @@ return setmetatable({}, {
 		end,
 	},
 	--]]
-
+	
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '"KHR/khrplatform.h"',
+		out = 'OSX/KHR/khrplatform.lua',
+		includedirs = {'.'},
+	},
 }:mapi(function(inc)
 	inc.os = 'OSX'
 	return inc

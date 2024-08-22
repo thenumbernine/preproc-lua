@@ -675,11 +675,17 @@ return setmetatable({
 ]=]
 	},
 
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '<KHR/khrplatform.h>',
+		out = 'Windows/KHR/khrplatform.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
 end))
---]====]
+--]====] End Windows-specifc:
 
 -- [====[ Begin Linux-specific:
 includeList:append(table{
@@ -1254,6 +1260,12 @@ return require 'ffi.load' 'archive'
 ]]
 			return code
 		end,
+	},
+
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '<KHR/khrplatform.h>',
+		out = 'Linux/KHR/khrplatform.lua',
 	},
 
 }:mapi(function(inc)
@@ -2411,12 +2423,6 @@ return setmetatable({
 		},
 	},
 
-	-- used by GL, GLES1, GLES2 ...
-	{
-		inc = '<KHR/khrplatform.h>',
-		out = 'KHR/khrplatform.lua',	-- TODO out to Linux/KHR ... and Windows/KHR separately?
-	},
-
 	-- inc is put last before flags
 	-- but inc is what the make_all.lua uses
 	-- so this has to be built make_all.lua GL/glext.h
@@ -2424,11 +2430,15 @@ return setmetatable({
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc = '<GL/gl.h>',
+		inc = ffi.os == 'OSX' and '<OpenGL/OpenGL.h>' or '<GL/gl.h>',
 		moreincs = {'<GL/glext.h>'},
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,
+		includeDirMapping = ffi.os == 'OSX' and {
+			-- TODO -framework equivalent ...
+			{['^OpenGL/(.*)$'] = '/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/System/Library/Frameworks/OpenGL.framework/Versions/A/Headers/%1'},
+		} or nil,
 		skipincs = ffi.os == 'Windows' and {
 		-- trying to find out why my gl.h is blowing up on windows
 			'<winapifamily.h>',	-- verify please

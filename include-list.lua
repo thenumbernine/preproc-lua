@@ -2460,8 +2460,10 @@ return setmetatable({
 	{
 		inc = ffi.os ~= 'OSX'
 			and '<GL/gl.h>'				-- typical location
-			or '"OpenGL/gl3.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
-		moreincs = ffi.os ~= 'OSX' and {'<GL/glext.h>'} or nil,
+			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
+		moreincs = ffi.os ~= 'OSX' 
+			and {'<GL/glext.h>'} 
+			or {'"OpenGL/glext.h"'},
 		includedirs = ffi.os == 'OSX' and {'.'} or nil,
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',

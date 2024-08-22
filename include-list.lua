@@ -1295,6 +1295,8 @@ includeList:append(table{
 	-- depends on <sys/_pthread/_pthread_types.h> <machine/_types.h>
 	{inc='<_types.h>', out='OSX/c/_types.lua'},
 
+	{inc='<sys/_types/_seek_set.h>', out='OSX/c/sys/_types/_seek_set.lua'},
+
 	{inc='<sys/_types/_timespec.h>', out='OSX/c/sys/_types/_timespec.lua'},
 
 	-- depends on <machine/_types.h>
@@ -1470,7 +1472,7 @@ return statlib
 
 	{inc='<setjmp.h>', out='OSX/c/setjmp.lua'},
 
-	-- depends: <features.h> <machine/_types.h>
+	-- depends: <features.h> <machine/_types.h> <sys/_types/_seek_set.h>
 	{
 		inc = '<unistd.h>',
 		out = 'OSX/c/unistd.lua',
@@ -1499,7 +1501,7 @@ return ffi.C
 	-- depends on <machine/_types.h>
 	{inc='<inttypes.h>', out='OSX/c/inttypes.lua'},
 
-	-- depends on <machine/_types.h>
+	-- depends on <machine/_types.h> <sys/_types/_seek_set.h>
 	{
 		inc = '<stdio.h>',
 		out = 'OSX/c/stdio.lua',

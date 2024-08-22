@@ -2460,16 +2460,17 @@ return setmetatable({
 	{
 		inc = ffi.os ~= 'OSX'
 			and '<GL/gl.h>'				-- typical location
-			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
+			or '"OpenGL/gl3.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
 		moreincs = ffi.os ~= 'OSX' and {'<GL/glext.h>'} or nil,
 		includedirs = ffi.os == 'OSX' and {'.'} or nil,
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,
+		-- [[ TODO -framework equivalent ...
 		includeDirMapping = ffi.os == 'OSX' and {
-			-- TODO -framework equivalent ...
 			{['^OpenGL/(.*)$'] = '/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/System/Library/Frameworks/OpenGL.framework/Versions/A/Headers/%1'},
 		} or nil,
+		--]]
 		skipincs = ffi.os == 'Windows' and {
 		-- trying to find out why my gl.h is blowing up on windows
 			'<winapifamily.h>',	-- verify please

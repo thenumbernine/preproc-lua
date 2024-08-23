@@ -213,6 +213,10 @@ local function fixasm(code)
 			if w:sub(1,1) == '#' then return w:sub(2) end
 			error("idk "..tostring(w))
 		end):concat()
+
+		-- here's another weird thing
+		s = assert(s:match'^_(.*)$')
+
 		return '__asm("' .. s .. '")'
 	end))
 end
@@ -1624,7 +1628,7 @@ return setmetatable({}, {
 		end,
 	},
 	--]]
-	
+
 	-- used by GL, GLES1, GLES2 ...
 	{
 		inc = '"KHR/khrplatform.h"',
@@ -2479,8 +2483,8 @@ return setmetatable({
 		inc = ffi.os ~= 'OSX'
 			and '<GL/gl.h>'				-- typical location
 			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
-		moreincs = ffi.os ~= 'OSX' 
-			and {'<GL/glext.h>'} 
+		moreincs = ffi.os ~= 'OSX'
+			and {'<GL/glext.h>'}
 			or {'"OpenGL/glext.h"'},
 		includedirs = ffi.os == 'OSX' and {'.'} or nil,
 		flags = '-DGL_GLEXT_PROTOTYPES',

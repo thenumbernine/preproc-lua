@@ -200,6 +200,22 @@ local function pkgconfigFlags(name)
 	return string.trim(io.readproc('pkg-config --cflags '..assert(name)))
 end
 
+-- some _asm directives have #sym instead of "sym" and also need their quotes merged ...
+local function fixasm(code)
+	return (code:gsub('__asm(%b())', function(s)
+		s = assert((s:match'^%((.*)%)$'))
+		-- at this point osx is nice enough to space-separate tokens
+		-- however I should account for non-space-separated.  TODO.
+		s = string.trim(s)
+		s = string.split(s, '%s+'):mapi(function(w)
+			local inside = w:match('^"(.*)"$')
+			if inside then return inside end	-- TODO string escape chars?
+			if w:sub(1,1) == '#' then return w:sub(2) end
+			error("idk "..tostring(w))
+		end):concat()
+		return '__asm("' .. s .. '")'
+	end))
+end
 
 local includeList = table()
 
@@ -1311,7 +1327,7 @@ includeList:append(table{
 		inc = '<sys/_select.h>',
 		out = 'OSX/c/sys/_select.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			return code
 		end,
 	},
@@ -1329,7 +1345,7 @@ includeList:append(table{
 		inc='<sys/select.h>',
 		out='OSX/c/sys/select.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			return code
 		end,
 	},
@@ -1339,7 +1355,7 @@ includeList:append(table{
 		inc = '<sys/termios.h>',
 		out = 'OSX/c/sys/termios.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			return code
 		end,
 	},
@@ -1352,7 +1368,7 @@ includeList:append(table{
 		inc='<string.h>',
 		out='OSX/c/string.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			return code
 		end,
 	},
@@ -1362,7 +1378,7 @@ includeList:append(table{
 		inc = '<time.h>',
 		out = 'OSX/c/time.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			code = fixEnumsAndDefineMacrosInterleaved(code)
 			return code
 		end,
@@ -1407,7 +1423,7 @@ return setmetatable({
 		inc = '<sys/stat.h>',
 		out = 'OSX/c/sys/stat.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			code = code .. [[
 local lib = ffi.C
 local statlib = setmetatable({
@@ -1453,7 +1469,7 @@ return statlib
 		inc = '<stdlib.h>',
 		out = 'OSX/c/stdlib.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 
 			-- how come __BLOCKS__ is defined ...
 			-- TODO disable __BLOCKS__ to omit these:
@@ -1477,7 +1493,7 @@ return statlib
 		inc = '<unistd.h>',
 		out = 'OSX/c/unistd.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			-- for interchangeability with Windows ...
 			code = code .. [[
 return ffi.C
@@ -1506,7 +1522,7 @@ return ffi.C
 		inc = '<stdio.h>',
 		out = 'OSX/c/stdio.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			code = code .. [[
 -- special case since in the browser app where I'm capturing fopen for remote requests and caching
 -- feel free to not use the returend table and just use ffi.C for faster access
@@ -1524,7 +1540,7 @@ return setmetatable({}, {
 		inc = '<wchar.h>',
 		out = 'OSX/c/wchar.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			-- these are duplicated in <wchar.h> and in <stdint.h>
 			code = commentOutLine(code, 'enum { WCHAR_MIN = -2147483648 };')
 			code = commentOutLine(code, 'enum { WCHAR_MAX = 2147483647 };')
@@ -1542,7 +1558,7 @@ return setmetatable({}, {
 		inc = '<dirent.h>',
 		out = 'OSX/c/dirent.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 
 			-- how come __BLOCKS__ is defined ...
 			-- TODO disable __BLOCKS__ to omit these:
@@ -1559,7 +1575,7 @@ return setmetatable({}, {
 		inc = '<signal.h>',
 		out = 'OSX/c/signal.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			code = fixEnumsAndDefineMacrosInterleaved(code)
 			return code
 		end,
@@ -1576,7 +1592,7 @@ return setmetatable({}, {
 		inc = '<sys/time.h>',
 		out = 'OSX/c/sys/time.lua',
 		final = function(code)
-			code = code:gsub('%s*__asm%b()', '')	-- what is this?
+			code = fixasm(code)
 			code = fixEnumsAndDefineMacrosInterleaved(code)
 			return code
 		end,

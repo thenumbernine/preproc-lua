@@ -237,15 +237,7 @@ includeList:append(table{
 	{inc='<corecrt_wstdio.h>', out='Windows/c/corecrt_wstdio.lua'},
 
 	-- depends: corecrt_share.h
-	{
-		inc = '<corecrt_wio.h>',
-		out = 'Windows/c/corecrt_wio.lua',
-		final = function(code)
-			code = removeEnum(code, '_wfinddata_t = 0')
-			code = removeEnum(code, '_wfinddatai64_t = 0')
-			return code
-		end,
-	},
+	{inc = '<corecrt_wio.h>', out = 'Windows/c/corecrt_wio.lua'},
 
 	-- depends: vcruntime_string.h
 	{inc='<corecrt_wstring.h>', out='Windows/c/corecrt_wstring.lua'},
@@ -262,8 +254,6 @@ includeList:append(table{
 		out = 'Windows/c/time.lua',
 		final = function(code)
 			for _,f in ipairs{
-				'_wctime',
-				'_wctime_s',
 				'ctime',
 				'difftime',
 				'gmtime',
@@ -341,16 +331,7 @@ typedef intptr_t ssize_t;
 	},
 
 	-- depends on: errno.h corecrt_wstring.h vcruntime_string.h
-	{
-		inc = '<string.h>',
-		out = 'Windows/c/string.lua',
-		-- TODO latest uses some __REDIRECT_NTH macro that preproc.lua is choking on
-		-- TODO final() that outputs a wrapper that replaces calls to all the default POSIX functions with instead calls to the alternative safe ones
-		final = function(code)
-			code = removeStaticFunction(code, '_wcstok')
-			return code
-		end,
-	},
+	{inc = '<string.h>', out = 'Windows/c/string.lua'},
 
 	-- depends on: corecrt_wio.h, corecrt_share.h
 	-- really it just includes corecrt_io.h
@@ -358,9 +339,6 @@ typedef intptr_t ssize_t;
 		inc = '<io.h>',
 		out = 'Windows/c/io.lua',
 		final = function(code)
-			code = removeEnum(code, '_finddata_t = 0')
-			code = removeEnum(code, '_finddatai64_t = 0')
-
 			-- same as in corecrt_wio.h
 			code = code .. [=[
 ffi.cdef[[
@@ -485,19 +463,6 @@ return setmetatable({
 		inc = '<sys/stat.h>',
 		out = 'Windows/c/sys/stat.lua',
 		final = function(code)
-			-- remove the #define-as-typedef produced enums...
-			for _,f in ipairs{
-				'__stat64',
-				'_fstat',
-				'_fstati64',
-				'_stat',
-				'_stati64',
-				'_wstat',
-				'_wstati64',
-			} do
-				code = removeEnum(code, f..' = 0')
-			end
-
 			code = removeStaticFunction(code, 'fstat')	-- _fstat64i32
 			code = removeStaticFunction(code, 'stat')	-- _stat64i32
 
@@ -1274,11 +1239,11 @@ includeList:append(table{
 			-- getting around the FAR stuff
 			-- why am I generating an enum for it?
 			-- and now just replace the rest with nothing
-			code = safegsub(code, 'enum { FAR = 1 };\n', '')
+			code = safegsub(code, 'enum { FAR = 1 };', '')
 			-- same deal with z_off_t
 			-- my preproc => luajit can't handle defines that are working in place of typedefs
-			code = safegsub(code, 'enum { z_off_t = 0 };\n', '')
-			code = safegsub(code, 'enum { z_off64_t = 0 };\n', '')
+			code = safegsub(code, 'enum { z_off_t = 0 };', '')
+			code = safegsub(code, 'enum { z_off64_t = 0 };', '')
 
 			-- add some macros onto the end manually
 			code = code .. [[

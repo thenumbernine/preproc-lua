@@ -33,7 +33,6 @@ local function safegsub(s, from, to, ...)
 	return s
 end
 
-
 local function remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
 	return safegsub(
 		code,
@@ -201,6 +200,26 @@ local function pkgconfigFlags(name)
 	return string.trim(io.readproc('pkg-config --cflags '..assert(name)))
 end
 
+-- some _asm directives have #sym instead of "sym" and also need their quotes merged ...
+local function fixasm(code)
+	return (code:gsub('__asm(%b())', function(s)
+		s = assert((s:match'^%((.*)%)$'))
+		-- at this point osx is nice enough to space-separate tokens
+		-- however I should account for non-space-separated.  TODO.
+		s = string.trim(s)
+		s = string.split(s, '%s+'):mapi(function(w)
+			local inside = w:match('^"(.*)"$')
+			if inside then return inside end	-- TODO string escape chars?
+			if w:sub(1,1) == '#' then return w:sub(2) end
+			error("idk "..tostring(w))
+		end):concat()
+
+		-- here's another weird thing
+		s = assert(s:match'^_(.*)$')
+
+		return '__asm("' .. s .. '")'
+	end))
+end
 
 local includeList = table()
 
@@ -640,11 +659,17 @@ return setmetatable({
 ]=]
 	},
 
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '<KHR/khrplatform.h>',
+		out = 'Windows/KHR/khrplatform.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc
 end))
---]====]
+--]====] End Windows-specifc:
 
 -- [====[ Begin Linux-specific:
 includeList:append(table{
@@ -1221,12 +1246,366 @@ return require 'ffi.load' 'archive'
 		end,
 	},
 
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '<KHR/khrplatform.h>',
+		out = 'Linux/KHR/khrplatform.lua',
+	},
+
 }:mapi(function(inc)
-	inc.os = 'Linux'	-- meh?
+	inc.os = 'Linux' -- meh?  just have all these default for -nix systems?
 	return inc
 end))
-
 -- ]====] End Linux-specific:
+
+-- [====[ Begin OSX-specific:
+includeList:append(table{
+	{inc='<AvailabilityVersions.h>', out='OSX/c/AvailabilityVersions.lua'},
+
+	-- depends on <AvailabilityVersions.h>
+	-- ... SDL.h on OSX separately includes AvailabilityMacros.h without Availability.h
+	-- ... and both Availability.h and AvailabilityMacros.h points to AvailabilityVersions.h
+	-- (so maybe I could avoid this one file and just let its contents embed into sdl.lua ...)
+	{inc='<AvailabilityMacros.h>', out='OSX/c/AvailabilityMacros.lua'},
+
+	-- depends on <AvailabilityMacros.h> and <AvailabilityVersions.h>
+	{inc='<Availability.h>', out='OSX/c/Availability.lua'},
+
+	{inc='<machine/_types.h>', out='OSX/c/machine/_types.lua'},
+
+	{inc='<machine/endian.h>', out='OSX/c/machine/endian.lua'},
+
+	{inc='<sys/_pthread/_pthread_types.h>', out='OSX/c/sys/_pthread/_pthread_types.lua'},
+
+	-- depends on <sys/_pthread/_pthread_types.h> <machine/_types.h>
+	{inc='<_types.h>', out='OSX/c/_types.lua'},
+
+	{inc='<sys/_types/_seek_set.h>', out='OSX/c/sys/_types/_seek_set.lua'},
+
+	{inc='<sys/_types/_timespec.h>', out='OSX/c/sys/_types/_timespec.lua'},
+
+	-- depends on <machine/_types.h>
+	{inc='<sys/_types/_timeval.h>', out='OSX/c/sys/_types/_timeval.lua'},
+
+	{inc='<sys/_types/_fd_def.h>', out='OSX/c/sys/_types/_fd_def.lua'},
+
+	{inc='<sys/_types/_fd_setsize.h>', out='OSX/c/sys/_types/_fd_setsize.lua'},
+
+	-- depends on <sys/_types/_fd_def.h> <sys/_types/_timeval.h>
+	{
+		inc = '<sys/_select.h>',
+		out = 'OSX/c/sys/_select.lua',
+		final = function(code)
+			code = fixasm(code)
+			return code
+		end,
+	},
+
+	-- TODO might end up adding sys/_types.h ...
+	-- it depends on machine/_types.h
+
+	{inc='<stddef.h>', out='OSX/c/stddef.lua'},
+
+	-- depends on <_types.h> <machine/_types.h>
+	{inc='<sys/ioctl.h>', out='OSX/c/sys/ioctl.lua'},
+
+	-- depends on <_types.h> <sys/_types/_timespec.h> <sys/_types/_fd_def.h> <machine/_types.h>
+	{
+		inc='<sys/select.h>',
+		out='OSX/c/sys/select.lua',
+		final = function(code)
+			code = fixasm(code)
+			return code
+		end,
+	},
+
+	-- depends on <_types.h> <machine/_types.h>
+	{
+		inc = '<sys/termios.h>',
+		out = 'OSX/c/sys/termios.lua',
+		final = function(code)
+			code = fixasm(code)
+			return code
+		end,
+	},
+
+	-- depends on <_types.h> <sys/_types/_fd_def.h> <machine/_types.h> <machine/endian.h>
+	{inc='<sys/types.h>', out='OSX/c/sys/types.lua'},
+
+	-- depends on <_types.h> <machine/_types.h>
+	{
+		inc='<string.h>',
+		out='OSX/c/string.lua',
+		final = function(code)
+			code = fixasm(code)
+			return code
+		end,
+	},
+
+	-- depends on <_types.h> <sys/_types/_timespec.h> <machine/_types.h>
+	{
+		inc = '<time.h>',
+		out = 'OSX/c/time.lua',
+		final = function(code)
+			code = fixasm(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+		end,
+	},
+
+	{
+		inc = '<errno.h>',
+		out = 'OSX/c/errno.lua',
+		final = function(code)
+			-- manually add the 'errno' macro at the end:
+			code = code .. [[
+return setmetatable({
+	errno = function()
+		return ffi.C.__errno_location()[0]
+	end,
+}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
+	},
+
+	-- depends on <_types.h>
+	{
+		inc = '<utime.h>',
+		out = 'OSX/c/utime.lua',
+		final = function(code)
+			code = code .. [[
+return setmetatable({
+	struct_utimbuf = 'struct utimbuf',
+}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
+	},
+
+	-- depends on <_types.h> <sys/_types/_timespec.h> <machine/_types.h>
+	{
+		inc = '<sys/stat.h>',
+		out = 'OSX/c/sys/stat.lua',
+		final = function(code)
+			code = fixasm(code)
+			code = code .. [[
+local lib = ffi.C
+local statlib = setmetatable({
+	struct_stat = 'struct stat',
+}, {
+	__index = lib,
+})
+-- allow nils instead of errors if we access fields not present (for the sake of lfs_ffi)
+ffi.metatype(statlib.struct_stat, {
+	__index = function(t,k)
+		return nil
+	end,
+})
+return statlib
+]]
+			return code
+		end,
+	},
+
+	-- depends on <_types.h> <machine/_types.h>
+	{inc = '<stdint.h>', out = 'OSX/c/stdint.lua'},
+
+	-- depends on <machine/_types.h>
+	{
+		inc = '<sys/signal.h>',
+		out='OSX/c/sys/signal.lua',
+		final = function(code)
+			-- [[ #defines within structs ...
+			code = code:gsub('enum { FP_PREC_24B = 0 };', '')
+			code = code:gsub('enum { FP_PREC_53B = 2 };', '')
+			code = code:gsub('enum { FP_PREC_64B = 3 };', '')
+			code = code:gsub('enum { FP_RND_NEAR = 0 };', '')
+			code = code:gsub('enum { FP_RND_DOWN = 1 };', '')
+			code = code:gsub('enum { FP_RND_UP = 2 };', '')
+			code = code:gsub('enum { FP_CHOP = 3 };', '')
+			--]]
+			return code
+		end,
+	},
+
+	-- depends on <sys/signal.h>, <_types.h> <machine/_types.h> <machine/endian.h>
+	{
+		inc = '<stdlib.h>',
+		out = 'OSX/c/stdlib.lua',
+		final = function(code)
+			code = fixasm(code)
+
+			-- how come __BLOCKS__ is defined ...
+			-- TODO disable __BLOCKS__ to omit these:
+			code = string.split(code, '\n'):filter(function(l)
+				return not l:find'_b%('
+			end):concat'\n'
+
+			return code
+		end,
+	},
+
+	{inc='<sys/syslimits.h>', out='OSX/c/sys/syslimits.lua'},
+
+	-- depends on <sys/syslimits.h>
+	{inc='<limits.h>', out='OSX/c/limits.lua'},
+
+	{inc='<setjmp.h>', out='OSX/c/setjmp.lua'},
+
+	-- depends: <features.h> <machine/_types.h> <sys/_types/_seek_set.h>
+	{
+		inc = '<unistd.h>',
+		out = 'OSX/c/unistd.lua',
+		final = function(code)
+			code = fixasm(code)
+			-- for interchangeability with Windows ...
+			code = code .. [[
+return ffi.C
+]]
+			return code
+		end,
+	},
+
+	{inc='<sched.h>', out='OSX/c/sched.lua'},
+
+	{inc='<stdarg.h>', out='OSX/c/stdarg.lua'},
+
+	{inc='<stdbool.h>', out='OSX/c/stdbool.lua', final=function(code)
+		-- luajit has its own bools already defined
+		code = commentOutLine(code, 'enum { bool = 0 };')
+		code = commentOutLine(code, 'enum { true = 1 };')
+		code = commentOutLine(code, 'enum { false = 0 };')
+		return code
+	end},
+
+	-- depends on <machine/_types.h>
+	{inc='<inttypes.h>', out='OSX/c/inttypes.lua'},
+
+	-- depends on <machine/_types.h> <sys/_types/_seek_set.h>
+	{
+		inc = '<stdio.h>',
+		out = 'OSX/c/stdio.lua',
+		final = function(code)
+			code = fixasm(code)
+			code = code .. [[
+-- special case since in the browser app where I'm capturing fopen for remote requests and caching
+-- feel free to not use the returend table and just use ffi.C for faster access
+-- but know you'll be losing compatability with browser
+return setmetatable({}, {
+	__index = ffi.C,
+})
+]]
+			return code
+		end,
+	},
+
+	-- depends on <stdio.h> <machine/_types.h>
+	{
+		inc = '<wchar.h>',
+		out = 'OSX/c/wchar.lua',
+		final = function(code)
+			code = fixasm(code)
+			-- these are duplicated in <wchar.h> and in <stdint.h>
+			code = commentOutLine(code, 'enum { WCHAR_MIN = -2147483648 };')
+			code = commentOutLine(code, 'enum { WCHAR_MAX = 2147483647 };')
+			return code
+		end,
+	},
+
+	{
+		inc = '<math.h>',
+		out = 'OSX/c/math.lua',
+	},
+
+	-- depends on <_types.h>
+	{
+		inc = '<dirent.h>',
+		out = 'OSX/c/dirent.lua',
+		final = function(code)
+			code = fixasm(code)
+
+			-- how come __BLOCKS__ is defined ...
+			-- TODO disable __BLOCKS__ to omit these:
+			code = string.split(code, '\n'):filter(function(l)
+				return not l:find'_b%('
+			end):concat'\n'
+
+			return code
+		end,
+	},
+
+	-- depends on <_types.h> <sys/signal.h>
+	{
+		inc = '<signal.h>',
+		out = 'OSX/c/signal.lua',
+		final = function(code)
+			code = fixasm(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+		end,
+	},
+
+	-- depends on <sys/syslimits.h> <machine/_types.h>
+	{inc='<sys/param.h>', out='OSX/c/sys/param.lua', final=function(code)
+		code = fixEnumsAndDefineMacrosInterleaved(code)
+		return code
+	end},
+
+	-- depends on <sys/_types/_timespec.h> <sys/_types/_fd_def.h> <machine/_types.h>
+	{
+		inc = '<sys/time.h>',
+		out = 'OSX/c/sys/time.lua',
+		final = function(code)
+			code = fixasm(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+		end,
+	},
+
+	{
+		inc = '<complex.h>',
+		out = 'OSX/c/complex.lua',
+		enumGenUnderscoreMacros = true,
+		final = function(code)
+			code = commentOutLine(code, 'enum { __BEGIN_DECLS = 1 };')
+			code = commentOutLine(code, 'enum { __END_DECLS = 1 };')
+			code = commentOutLine(code, 'enum { __const = 0 };')
+			code = commentOutLine(code, 'enum { __signed = 0 };')
+			code = commentOutLine(code, 'enum { __volatile = 0 };')
+			code = commentOutLine(code, 'enum { __restrict = 0 };')
+			code = commentOutLine(code, 'enum { complex = 0 };')
+			return code
+		end,
+	},
+
+	--[[ TODO vararg problem
+	{
+		inc = '<pthread.h>',
+		out = 'OSX/c/pthread.lua',
+		final = function(code)
+			code = fixEnumsAndDefineMacrosInterleaved(code)
+			return code
+		end,
+	},
+	--]]
+
+	-- used by GL, GLES1, GLES2 ...
+	{
+		inc = '"KHR/khrplatform.h"',
+		out = 'OSX/KHR/khrplatform.lua',
+		includedirs = {'.'},
+	},
+}:mapi(function(inc)
+	inc.os = 'OSX'
+	return inc
+end))
+--]====] End OSX-specific:
+
 includeList:append(table{
 
 -- these come from external libraries (so I don't put them in the c/ subfolder)
@@ -2059,12 +2438,6 @@ return setmetatable({
 		},
 	},
 
-	-- used by GL, GLES1, GLES2 ...
-	{
-		inc = '<KHR/khrplatform.h>',
-		out = 'KHR/khrplatform.lua',	-- TODO out to Linux/KHR ... and Windows/KHR separately?
-	},
-
 	-- inc is put last before flags
 	-- but inc is what the make_all.lua uses
 	-- so this has to be built make_all.lua GL/glext.h
@@ -2072,11 +2445,21 @@ return setmetatable({
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc = '<GL/gl.h>',
-		moreincs = {'<GL/glext.h>'},
+		inc = ffi.os ~= 'OSX'
+			and '<GL/gl.h>'				-- typical location
+			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
+		moreincs = ffi.os ~= 'OSX'
+			and {'<GL/glext.h>'}
+			or {'"OpenGL/glext.h"'},
+		includedirs = ffi.os == 'OSX' and {'.'} or nil,
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,
+		-- [[ TODO -framework equivalent ...
+		includeDirMapping = ffi.os == 'OSX' and {
+			{['^OpenGL/(.*)$'] = '/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/System/Library/Frameworks/OpenGL.framework/Versions/A/Headers/%1'},
+		} or nil,
+		--]]
 		skipincs = ffi.os == 'Windows' and {
 		-- trying to find out why my gl.h is blowing up on windows
 			'<winapifamily.h>',	-- verify please
@@ -2250,15 +2633,12 @@ also HDF5 has a lot of unused enums ...
 		inc = '<SDL2/SDL.h>',
 		out = 'sdl.lua',
 		flags = pkgconfigFlags'sdl2',
-		includedirs = ffi.os == 'Windows' and {
-			[[C:\Users\Chris\include\SDL2]],
-		} or nil,
-		skipincs = ffi.os == 'Windows' and {
-			'<immintrin.h>',
-		} or {},
-		silentincs = ffi.os == 'Windows' and {} or {
-			'<immintrin.h>',
-		},
+		includedirs = ({
+			Windows = {[[C:\Users\Chris\include\SDL2]]},
+			OSX = {[[/usr/local/Cellar/sdl2/2.30.6/include/SDL2/]]},
+		})[ffi.os],
+		skipincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {'<immintrin.h>'} or {},
+		silentincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {} or {'<immintrin.h>'},
 		final = function(code)
 			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
 

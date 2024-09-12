@@ -2897,6 +2897,11 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 	{
 		inc = '<cclip.h>',
 		out = 'cclip.lua',
+		final = function(code)
+			code = code .. '\n'
+				.."return require 'ffi.load' 'clip'\n"
+			return code
+		end,
 	},
 })
 

@@ -2926,6 +2926,13 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 			return code
 		end,
 	},
+
+	-- based on some c bindings I wrote for https://github.com/dacap/clip
+	-- which maybe I should also put on github ...
+	{
+		inc = '<cclip.h>',
+		out = 'cclip.lua',
+	},
 })
 
 -- now detect any duplicate #include paths and make sure they are going to distinct os-specific destination file names

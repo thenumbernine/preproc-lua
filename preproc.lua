@@ -1,9 +1,4 @@
-local assertindex = require 'ext.assert'.index
-local asserttype = require 'ext.assert'.type
-local assertlen = require 'ext.assert'.len
-local asserteq = require 'ext.assert'.eq
-local assertne = require 'ext.assert'.ne
-local assertgt = require 'ext.assert'.gt
+local assert = require 'ext.assert'
 local string = require 'ext.string'
 local table = require 'ext.table'
 local tolua = require 'ext.tolua'
@@ -193,7 +188,7 @@ function Preproc:getDefineCode(k, v, l)
 			self.generatedEnums[k] = v
 
 			if replaceline then
-				asserttype(v, 'string')
+				assert.type(v, 'string')
 				-- [[ insert in-place? this will cause a luajit error
 				if not v:match'%.'		-- no floats
 				and not v:match'%de[+-]%d'	-- no exps
@@ -408,7 +403,7 @@ EDABC(x)
 			end
 			i = i + 1
 		end
-		asserteq(parcount, 0, "macro mismatched ()'s")
+		assert.eq(parcount, 0, "macro mismatched ()'s")
 		local paramvalue = paramStr:sub(last)
 		paramIndex = paramIndex + 1
 
@@ -426,7 +421,7 @@ EDABC(x)
 	if #vparams == 1 and vparams[1] == '...' then
 		paramMap = {['...'] = table.mapi(paramMap, function(v) return tostring(v) end):concat', '}
 	else
-		asserteq(paramIndex, #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
+		assert.eq(paramIndex, #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
 	end
 
 	return j, k, paramMap
@@ -747,40 +742,40 @@ end
 -- now to evalute the tree
 function Preproc:evalAST(t)
 	if t[1] == 'number' then
-		assertlen(t, 2)
+		assert.len(t, 2)
 		return assert(cliteralintegertonumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
-		assertlen(t, 2)
+		assert.len(t, 2)
 		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
 	elseif t[1] == '~' then
-		assertlen(t, 2)
+		assert.len(t, 2)
 		-- TODO here we are using ffi's bit lib ...
 		return bit.bnot(castnumber(self:evalAST(t[2])))
 	elseif t[1] == '^' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return bit.bxor(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3])))
 	elseif t[1] == '&' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return bit.band(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '|' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return bit.bor(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '<<' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return bit.lshift(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
 		)
 	elseif t[1] == '>>' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return bit.rshift(
 			castnumber(self:evalAST(t[2])),
 			castnumber(self:evalAST(t[3]))
@@ -802,19 +797,19 @@ function Preproc:evalAST(t)
 			return -castnumber(self:evalAST(t[2]))
 		end
 	elseif t[1] == '*' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return castnumber(self:evalAST(t[2]))
 			* castnumber(self:evalAST(t[3]))
 	elseif t[1] == '/' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return castnumber(self:evalAST(t[2]))
 			/ castnumber(self:evalAST(t[3]))
 	elseif t[1] == '%' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return castnumber(self:evalAST(t[2]))
 			% castnumber(self:evalAST(t[3]))
 	elseif t[1] == '&&' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		if castnumber(self:evalAST(t[2])) ~= 0
 		and castnumber(self:evalAST(t[3])) ~= 0
 		then
@@ -822,7 +817,7 @@ function Preproc:evalAST(t)
 		end
 		return 0
 	elseif t[1] == '||' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		if self:evalAST(t[2]) ~= 0
 		or self:evalAST(t[3]) ~= 0
 		then
@@ -830,25 +825,25 @@ function Preproc:evalAST(t)
 		end
 		return 0
 	elseif t[1] == '==' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return (castnumber(self:evalAST(t[2])) == castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>=' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return (castnumber(self:evalAST(t[2])) >= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<=' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return (castnumber(self:evalAST(t[2])) <= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '!=' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return (castnumber(self:evalAST(t[2])) ~= castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '>' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return (castnumber(self:evalAST(t[2])) > castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '<' then
-		assertlen(t, 3)
+		assert.len(t, 3)
 		return (castnumber(self:evalAST(t[2])) < castnumber(self:evalAST(t[3]))) and 1 or 0
 	elseif t[1] == '?' then
-		assertlen(t, 4)
+		assert.len(t, 4)
 		if castnumber(self:evalAST(t[2])) ~= 0 then
 			return castnumber(self:evalAST(t[3]))
 		else
@@ -1244,7 +1239,7 @@ function Preproc:__call(args)
 		error("can't handle args")
 	end
 
-	local code = assertindex(args, 'code')
+	local code = assert.index(args, 'code')
 
 	if args.sysIncludeDirs then
 		self:addIncludeDirs(args.sysIncludeDirs, true)
@@ -1282,7 +1277,7 @@ function Preproc:__call(args)
 			if popInc then
 				local last = self.includeStack:remove()
 -- TODO in my nested include() this is getting broken
-				asserteq(last, popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
+				assert.eq(last, popInc, "end of include "..popInc.." vs includeStack "..tolua(last))
 			else
 				-- nil = no condition present
 				-- true = current condition is true
@@ -1324,7 +1319,7 @@ function Preproc:__call(args)
 
 
 					local function closeIf()
-						assertgt(#ifstack, 0, 'found an #'..cmd..' without an #if')
+						assert.gt(#ifstack, 0, 'found an #'..cmd..' without an #if')
 						ifstack:remove()
 					end
 
@@ -1365,7 +1360,7 @@ function Preproc:__call(args)
 								else
 									k = rest
 									v = ''
-									assertne(k, '', "couldn't find what you were defining: "..l)
+									assert.ne(k, '', "couldn't find what you were defining: "..l)
 									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
 --DEBUG: debugprint('defining empty',k,v)
 								end
@@ -1421,10 +1416,10 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'else' then
-						assertgt(#ifstack, 0, "found an #else without an #if")
+						assert.gt(#ifstack, 0, "found an #else without an #if")
 						local oldcond = ifstack:last()
 						local hasprocessed = oldcond[1] or oldcond[2]
-						asserteq(rest, '', "found trailing characters after "..cmd)
+						assert.eq(rest, '', "found trailing characters after "..cmd)
 						ifstack[#ifstack] = {not hasprocessed, hasprocessed}
 						lines:remove(i)
 						i = i - 1
@@ -1447,7 +1442,7 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'endif' then
-						asserteq(rest, '', "found trailing characters after "..cmd)
+						assert.eq(rest, '', "found trailing characters after "..cmd)
 						closeIf()
 						ifHandled = nil
 						lines:remove(i)

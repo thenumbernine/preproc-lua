@@ -2,7 +2,7 @@
 
 ## C preprocessor in Lua
 
-Useful for luajit ffi cdefs just straight up using the .h files
+Useful for LuaJIT FFI cdefs just straight up using the .h files
 
 Depends on:
 - [lua-ext](https://github.com/thenumbernine/lua-ext)
@@ -10,9 +10,9 @@ Depends on:
 
 ## `make_all.lua` ##
 
-This generates a specific luajit loader file for a specific C include file.
+This generates a specific LuaJIT loader file for a specific C include file.
 It accepts either a specific header listed in the `include-list`, or it can generate all provided at once.
-This is separate of `generate.lua` because I need to use separate luajit ffi cdef states, so I just use separate processes.
+This is separate of `generate.lua` because I need to use separate LuaJIT FFI cdef states, so I just use separate processes.
 
 This is close to becoming what the `include-lua` project intended to be.
 However if you look inside the `include-list` you will see the amount of hand-tuning still required for this to work.
@@ -22,7 +22,7 @@ Until that can all be automated, `include-lua` will be on the shelf for a while.
 
 This contains a list of C to Lua files.
 It is used for automatic generation of all files.
-It is also used for determining when to replace an included file with a previously-generated file. 
+It is also used for determining when to replace an included file with a previously-generated file.
 
 ## `generate.lua` ##
 
@@ -34,10 +34,10 @@ The stripped headers are specific to LuaJIT:
 `luajit generate.lua <optional-args> <include-file1> <include-file2> ...`
 
 optional-args:
-	- -I<include-dir> = add extra include directory search path
-	- -M<macro-name>[=<macro-value>] = add extra macro
-	- -silent <include-file> = include the specified file, but do not include its contents in the header generation.
-	- -skip <include-file> = don't include the specified file.
+- `-I<include-dir>` = add extra include directory search path
+- `-M<macro-name>[=<macro-value>]` = add extra macro
+- `-silent <include-file>` = include the specified file, but do not include its contents in the header generation.
+- `-skip <include-file>` = don't include the specified file.
 
 ## `preproc.lua` ##
 
@@ -91,20 +91,21 @@ preproc:addIncludeDirs{
 }
 ```
 
-returns an object that is cast to its .code field which contains the result.
-this way you can query the .macros, .alreadyIncludedFiles, etc after preprocessing
+returns an object that is cast to its `.code` field which contains the result.
+this way you can query the `.macros`, `.alreadyIncludedFiles`, etc after preprocessing
 
-processing multiple files retains the state of .macros and .alreadyIncludedFiles.
+processing multiple files retains the state of `.macros` and `.alreadyIncludedFiles`.
 
-the call() operator returns the last file processed.
+The `__call` operator returns the last file processed.
 
-TODO should .code hold the last file processed, or the total files processed?
+## TODO / Things I'm Considering
 
-TODO If I'm in the middle of a typedef or enum or something with {}'s, I should wait to insert the #define => enum{} code.  (pthread.h)
+- Should `.code` hold the last file processed, or the total files processed?
 
-TODO if you have a number value like enum {A = 0}; then do recursive def #define A A, which because it's a number value is turned into an enum, then this will still insert that second enum.  (pthread.h)
+- If I'm in the middle of a typedef or `enum` or something with `{}`'s, I should wait to insert the `#define` => `enum{}` code.  (`pthread.h`)
 
-## Windows
-
-Right now this whole setup is made specifically for Linux.
-I'm slowly working towards Windows support as well, and with that means a giant cross-platform cross-arch include file repository.
+- Hitting the table upper limit of `ffi.C` is easy to do with all the symbols generated.
+To get around this I've created [`libwrapper.lua`](https://github.com/thenumbernine/lua-ffi-bindings/blob/master/libwrapper.lua) in my [lua-ffi-bindings](https://github.com/thenumbernine/lua-ffi-bindings) project.
+`libwrapper` gives each library its own unique table and defers loading of enums or functions until after they are referenced.
+This gets around the LuaJIT table limit.  Now you can export every symbol in your header without LuaJIT giving an error.
+But for now the headers are manually ported from `preproc` output to `libwrapper` output.  In the future I might autogen `libwrapper` output.

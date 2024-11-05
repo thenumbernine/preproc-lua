@@ -4,6 +4,8 @@
 
 Useful for LuaJIT FFI cdefs just straight up using the .h files
 
+Used for generating the code in my [`lua-ffi-bindings`](https://github.com/thenumbernine/lua-ffi-bindings) repo.
+
 Depends on:
 - [lua-ext](https://github.com/thenumbernine/lua-ext)
 - [lua-template](https://github.com/thenumbernine/lua-template)

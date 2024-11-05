@@ -30,8 +30,8 @@ It is also used for determining when to replace an included file with a previous
 
 This file generates stripped header files from C header files.
 The stripped headers are specific to LuaJIT:
--) They have #define constants replaced with enum{}'s.
--) They have function prototypes preserved.
+- They have `#define` constants replaced with `enum{}`'s.
+- They have function prototypes preserved.
 
 `luajit generate.lua <optional-args> <include-file1> <include-file2> ...`
 

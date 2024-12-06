@@ -1077,10 +1077,15 @@ return setmetatable({}, {
 	-- it must be manually extracted from c/setjmp.lua
 	{dontGen=true, inc='<bits/setjmp.h>', out='Linux/c/bits/setjmp.lua'},
 
-	{dontGen=true, inc='<bits/dirent.h>', out='Linux/c/bits/dirent.lua', final=function(code)
-		code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
-		return code
-	end},
+	{
+		dontGen = true,
+		inc = '<bits/dirent.h>',
+		out = 'Linux/c/bits/dirent.lua',
+		final = function(code)
+			code = commentOutLine(code, 'enum { __undef_ARG_MAX = 1 };')
+			return code
+		end,
+	},
 
 	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here
 	-- but i guess it doesn't even have to be here.

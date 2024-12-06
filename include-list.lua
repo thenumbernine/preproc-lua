@@ -1318,6 +1318,9 @@ includeList:append(table{
 
 	{inc='<sys/_types/_fd_setsize.h>', out='OSX/c/sys/_types/_fd_setsize.lua'},
 
+	-- used by <sys/stat.h> and <fcntl.h>
+	{inc='<sys/_types/_s_ifmt.h>', out='OSX/c/sys/_types/_s_ifmt.lua'},
+
 	-- depends on <sys/_types/_fd_def.h> <sys/_types/_timeval.h>
 	{
 		inc = '<sys/_select.h>',
@@ -2511,7 +2514,7 @@ return require 'ffi.load' 'OpenCL'
 		inc = '<tiffio.h>',
 		out = ffi.os..'/tiff.lua',
 		os = ffi.os,
-		flags = pkgconfigFlags'libtiff-4'
+		flags = pkgconfigFlags'libtiff-4',
 		final = function(code)
 			-- TODO remove ((deprecated))
 			-- TODO remove __attribute__() after functions

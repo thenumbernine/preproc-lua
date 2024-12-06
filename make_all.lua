@@ -65,6 +65,7 @@ ffi.cdef[[
 ]=]
 			local cmd = table{
 				luajit,
+--DEBUG:		'-lext.debug',	-- debugging? forward debug tags?
 				'generate.lua'
 			}
 			if inc.flags then
@@ -107,7 +108,7 @@ ffi.cdef[[
 				'"'..outpath..'"',
 			}
 			cmd = cmd:concat' '
-			print(os.exec(cmd))
+			assert(os.exec(cmd))
 			path(outpath):append[=[
 ]]
 ]=]
@@ -134,10 +135,10 @@ ffi.cdef[[
 		-- can't use -lext because that will load ffi/c stuff which could cause clashes in cdefs
 		-- luajit has loadfile, nice.
 		--[=[ use loadfile ... and all the old/original ffi locations
-		print(os.exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
+		assert(os.exec([[luajit -e "assert(loadfile(']]..outpath..[['))()"]]))
 		--]=]
 		-- [=[ use require, and base it in the output folder
-		print(os.exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.req' ']]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
+		assert(os.exec([[luajit -e "package.path=']]..outdirbase..[[/?.lua;'..package.path require 'ffi.req' ']]..assert((inc.out:match('(.*)%.lua'))):gsub('/', '.')..[['"]]))
 		--]=]
 	end
 end

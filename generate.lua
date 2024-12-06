@@ -349,6 +349,7 @@ else	-- assume everything else uses gcc
 	-- how to handle gcc extension macros?
 	preproc[[
 #define __has_feature(x)		0
+#define __building_module(x)	0
 #define __has_extension(x)		0
 #define __has_attribute(x)		0
 #define __has_cpp_attribute(x)	0

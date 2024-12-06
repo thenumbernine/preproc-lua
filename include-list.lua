@@ -459,6 +459,11 @@ return setmetatable({
 		out = 'Windows/c/direct.lua',
 	},
 
+	-- [[ TODO verify these work
+	{inc = '<fcntl.h>', out = 'Windows/c/fcntl.lua'},
+	{inc = '<sys/mman.h>', out = 'Windows/c/sys/mman.lua'},
+	--]]
+
 	-- depends: corecrt_stdio_config.h
 	{
 		inc = '<stdio.h>',
@@ -725,6 +730,7 @@ includeList:append(table{
 		out = 'Linux/c/sys/termios.lua',
 		final = function(code)
 			code = replace_bits_types_builtin(code, 'pid_t')
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			return code
 		end,
 	},
@@ -1011,6 +1017,11 @@ return ffi.C
 	-- depends: features.h stdint.h
 	{inc='<inttypes.h>', out='Linux/c/inttypes.lua'},
 
+	-- [[ TODO verify these work
+	{inc = '<fcntl.h>', out = 'Linux/c/fcntl.lua'},
+	{inc = '<sys/mman.h>', out = 'Linux/c/sys/mman.lua'},
+	--]]
+
 	-- depends on too much
 	-- moving to Linux-only block since now it is ...
 	-- it used to be just after stdarg.h ...
@@ -1271,21 +1282,37 @@ includeList:append(table{
 	-- depends on <AvailabilityMacros.h> and <AvailabilityVersions.h>
 	{inc='<Availability.h>', out='OSX/c/Availability.lua'},
 
+	-- used by machine/_types.h and machine/types.h
+	-- probably just for i386 processors
+	{inc='<i386/_types.h>', out='OSX/c/i386/_types.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
+
 	{inc='<machine/_types.h>', out='OSX/c/machine/_types.lua'},
 
-	{inc='<machine/endian.h>', out='OSX/c/machine/endian.lua'},
+	{inc='<machine/endian.h>', out='OSX/c/machine/endian.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	{inc='<sys/_pthread/_pthread_types.h>', out='OSX/c/sys/_pthread/_pthread_types.lua'},
 
 	-- depends on <sys/_pthread/_pthread_types.h> <machine/_types.h>
-	{inc='<_types.h>', out='OSX/c/_types.lua'},
+	{inc='<_types.h>', out='OSX/c/_types.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	{inc='<sys/_types/_seek_set.h>', out='OSX/c/sys/_types/_seek_set.lua'},
 
 	{inc='<sys/_types/_timespec.h>', out='OSX/c/sys/_types/_timespec.lua'},
 
 	-- depends on <machine/_types.h>
-	{inc='<sys/_types/_timeval.h>', out='OSX/c/sys/_types/_timeval.lua'},
+	{inc='<sys/_types/_timeval.h>', out='OSX/c/sys/_types/_timeval.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	{inc='<sys/_types/_fd_def.h>', out='OSX/c/sys/_types/_fd_def.lua'},
 
@@ -1307,7 +1334,11 @@ includeList:append(table{
 	{inc='<stddef.h>', out='OSX/c/stddef.lua'},
 
 	-- depends on <_types.h> <machine/_types.h>
-	{inc='<sys/ioctl.h>', out='OSX/c/sys/ioctl.lua'},
+	{inc='<sys/ioctl.h>', out='OSX/c/sys/ioctl.lua', final=function(code)
+		code = fixasm(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	-- depends on <_types.h> <sys/_types/_timespec.h> <sys/_types/_fd_def.h> <machine/_types.h>
 	{
@@ -1315,6 +1346,7 @@ includeList:append(table{
 		out='OSX/c/sys/select.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			return code
 		end,
 	},
@@ -1330,7 +1362,10 @@ includeList:append(table{
 	},
 
 	-- depends on <_types.h> <sys/_types/_fd_def.h> <machine/_types.h> <machine/endian.h>
-	{inc='<sys/types.h>', out='OSX/c/sys/types.lua'},
+	{inc='<sys/types.h>', out='OSX/c/sys/types.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	-- depends on <_types.h> <machine/_types.h>
 	{
@@ -1338,6 +1373,7 @@ includeList:append(table{
 		out='OSX/c/string.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			return code
 		end,
 	},
@@ -1349,6 +1385,7 @@ includeList:append(table{
 		final = function(code)
 			code = fixasm(code)
 			code = fixEnumsAndDefineMacrosInterleaved(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			return code
 		end,
 	},
@@ -1393,6 +1430,7 @@ return setmetatable({
 		out = 'OSX/c/sys/stat.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			code = code .. [[
 local lib = ffi.C
 local statlib = setmetatable({
@@ -1413,13 +1451,17 @@ return statlib
 	},
 
 	-- depends on <_types.h> <machine/_types.h>
-	{inc = '<stdint.h>', out = 'OSX/c/stdint.lua'},
+	{inc='<stdint.h>', out='OSX/c/stdint.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	-- depends on <machine/_types.h>
 	{
 		inc = '<sys/signal.h>',
 		out='OSX/c/sys/signal.lua',
 		final = function(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			-- [[ #defines within structs ...
 			code = code:gsub('enum { FP_PREC_24B = 0 };', '')
 			code = code:gsub('enum { FP_PREC_53B = 2 };', '')
@@ -1439,6 +1481,7 @@ return statlib
 		out = 'OSX/c/stdlib.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 
 			-- how come __BLOCKS__ is defined ...
 			-- TODO disable __BLOCKS__ to omit these:
@@ -1453,7 +1496,10 @@ return statlib
 	{inc='<sys/syslimits.h>', out='OSX/c/sys/syslimits.lua'},
 
 	-- depends on <sys/syslimits.h>
-	{inc='<limits.h>', out='OSX/c/limits.lua'},
+	{inc='<limits.h>', out='OSX/c/limits.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	{inc='<setjmp.h>', out='OSX/c/setjmp.lua'},
 
@@ -1463,6 +1509,7 @@ return statlib
 		out = 'OSX/c/unistd.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			-- for interchangeability with Windows ...
 			code = code .. [[
 return ffi.C
@@ -1484,7 +1531,22 @@ return ffi.C
 	end},
 
 	-- depends on <machine/_types.h>
-	{inc='<inttypes.h>', out='OSX/c/inttypes.lua'},
+	{inc='<inttypes.h>', out='OSX/c/inttypes.lua', final=function(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
+
+	{inc='<fcntl.h>', out='OSX/c/fcntl.lua', final=function(code)
+		code = fixasm(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
+
+	{inc='<sys/mman.h>', out='OSX/c/sys/mman.lua', final=function(code)
+		code = fixasm(code)
+		code = removeEnum(code, 'USE_CLANG_%w* = 0')
+		return code
+	end},
 
 	-- depends on <machine/_types.h> <sys/_types/_seek_set.h>
 	{
@@ -1492,6 +1554,7 @@ return ffi.C
 		out = 'OSX/c/stdio.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			code = code .. [[
 -- special case since in the browser app where I'm capturing fopen for remote requests and caching
 -- feel free to not use the returend table and just use ffi.C for faster access
@@ -1510,6 +1573,7 @@ return setmetatable({}, {
 		out = 'OSX/c/wchar.lua',
 		final = function(code)
 			code = fixasm(code)
+			code = removeEnum(code, 'USE_CLANG_%w* = 0')
 			-- these are duplicated in <wchar.h> and in <stdint.h>
 			code = commentOutLine(code, 'enum { WCHAR_MIN = -2147483648 };')
 			code = commentOutLine(code, 'enum { WCHAR_MAX = 2147483647 };')
@@ -1520,6 +1584,13 @@ return setmetatable({}, {
 	{
 		inc = '<math.h>',
 		out = 'OSX/c/math.lua',
+		final = function(code)
+			-- idk how to handle luajit and _Float16 for now so ...
+			code = string.split(code, '\n'):filter(function(l)
+				return not l:find'_Float16'
+			end):concat'\n'
+			return code
+		end,
 	},
 
 	-- depends on <_types.h>
@@ -1706,7 +1777,6 @@ wrapper = setmetatable({
 		assert(wrapper.pcall('uncompress', dst, dstLen, src, srcLen))
 		return ffi.string(dst, dstLen[0])
 	end,
-end
 }, {
 	__index = zlib,
 })
@@ -2441,7 +2511,12 @@ return require 'ffi.load' 'OpenCL'
 		inc = '<tiffio.h>',
 		out = ffi.os..'/tiff.lua',
 		os = ffi.os,
-		flags = pkgconfigFlags'libtiff-4',
+		flags = pkgconfigFlags'libtiff-4'
+		final = function(code)
+			-- TODO remove ((deprecated))
+			-- TODO remove __attribute__() after functions
+			return code
+		end,
 	},
 
 	-- apt install libjpeg-turbo-dev
@@ -2457,18 +2532,31 @@ return require 'ffi.load' 'OpenCL'
 require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
 ]] .. code
 			code = code .. [[
-local lib = require 'ffi.load' 'jpeg'
--- these are #define's in jpeglib.h
-return setmetatable({
-	jpeg_create_compress = function(cinfo)
-		return lib.jpeg_CreateCompress(cinfo, lib.JPEG_LIB_VERSION, ffi.sizeof('struct jpeg_compress_struct'))
-	end,
-	jpeg_create_decompress = function(cinfo)
-		return lib.jpeg_CreateDecompress(cinfo, lib.JPEG_LIB_VERSION, ffi.sizeof('struct jpeg_decompress_struct'))
-	end
-}, {
-	__index = lib,
-})
+local wrapper
+wrapper = require 'ffi.libwrapper'{
+	lib = require 'ffi.load' 'jpeg',
+	defs = {
+		-- TODO have the autogenerate produce libwrappers:
+
+		-- enums
+
+		-- functions
+
+		-- these are #define's in jpeglib.h
+
+		jpeg_create_compress = function()
+			return function(cinfo)
+				return wrapper.jpeg_CreateCompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_compress_struct')
+			end
+		end,
+		jpeg_create_decompress = function()
+			return function(cinfo)
+				return wrapper.jpeg_CreateDecompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_decompress_struct')
+			end
+		end,
+	},
+}
+return wrapper
 ]]
 			return code
 		end,
@@ -2722,7 +2810,7 @@ return require 'ffi.load' 'SDL2'
 	{
 		inc = '<vorbis/vorbisfile.h>',
 		out = 'vorbis/vorbisfile.lua',
-		flags = '-I/usr/include/vorbis',
+		flags = '-I/usr/include/vorbis -I/usr/local/include/vorbis',
 		final = function(code)
 			-- the result contains some inline static functions and some static struct initializers which ffi cdef can't handle
 			-- ... I need to comment it out *HERE*.
@@ -2833,7 +2921,9 @@ return require 'ffi.load' 'GLESv2'
 		end,
 	},
 	{
-		inc = '<AL/al.h>',
+		inc = ffi.os ~= 'OSX'
+			and '<AL/al.h>'
+			or '"OpenAL/OpenAL.h"',	-- bleh too tired to go through the same struggles as with OpenGL on OSX ...
 		moreincs = {
 			'<AL/alc.h>',
 		},

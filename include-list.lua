@@ -827,20 +827,30 @@ return setmetatable({
 		end,
 	},
 
+	-- used by <sys/stat.h>, <fcntl.h>
+	{
+		dontGen = true,	-- I hate the "don't include this directly" error messages ...
+		inc = '<bits/stat.h>',
+		out = 'Linux/c/bits/stat.lua',
+	},
+
 	-- depends: bits/types.h etc
-	{inc='<sys/stat.h>', out='Linux/c/sys/stat.lua', final=function(code)
-		for _,t in ipairs{
-			'dev_t',
-			'ino_t',
-			'mode_t',
-			'nlink_t',
-			'gid_t',
-			'uid_t',
-			'off_t',
-		} do
-			code = replace_bits_types_builtin(code, t)
-		end
-		code = code .. [[
+	{
+		inc = '<sys/stat.h>',
+		out = 'Linux/c/sys/stat.lua',
+		final = function(code)
+			for _,t in ipairs{
+				'dev_t',
+				'ino_t',
+				'mode_t',
+				'nlink_t',
+				'gid_t',
+				'uid_t',
+				'off_t',
+			} do
+				code = replace_bits_types_builtin(code, t)
+			end
+			code = code .. [[
 local lib = ffi.C
 local statlib = setmetatable({
 	struct_stat = 'struct stat',
@@ -855,8 +865,9 @@ ffi.metatype(statlib.struct_stat, {
 })
 return statlib
 ]]
-		return code
-	end},
+			return code
+		end,
+	},
 
 	-- depends: bits/types.h
 	{

@@ -1337,6 +1337,9 @@ includeList:append(table{
 	-- used by <sys/stat.h> and <fcntl.h>
 	{inc='<sys/_types/_s_ifmt.h>', out='OSX/c/sys/_types/_s_ifmt.lua'},
 
+	-- used by <sys/types.h>, <string.h>, <errno.h>
+	{inc='<sys/_types/_errno_t.h>', out='OSX/c/sys/_types/_errno_t.lua'},
+
 	-- depends on <sys/_types/_fd_def.h> <sys/_types/_timeval.h>
 	{
 		inc = '<sys/_select.h>',
@@ -1409,6 +1412,7 @@ includeList:append(table{
 		end,
 	},
 
+	-- depends on <sys/_types/_errno_t.h>
 	{
 		inc = '<errno.h>',
 		out = 'OSX/c/errno.lua',

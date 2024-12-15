@@ -670,6 +670,12 @@ return setmetatable({
 		out = 'Windows/KHR/khrplatform.lua',
 	},
 
+	-- used by SDL
+	{
+		inc = '<process.h>',
+		out = 'Windows/c/process.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Windows'
 	return inc

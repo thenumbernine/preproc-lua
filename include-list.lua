@@ -1279,6 +1279,13 @@ return require 'ffi.load' 'archive'
 		out = 'Linux/KHR/khrplatform.lua',
 	},
 
+	-- included by SDL/SDL_stdinc.h
+	-- I'm surprised it's not used more often, has stuff like 'tolower'
+	{
+		inc = '<ctype.h>',
+		out = 'Linux/c/ctype.lua',
+	},
+
 }:mapi(function(inc)
 	inc.os = 'Linux' -- meh?  just have all these default for -nix systems?
 	return inc

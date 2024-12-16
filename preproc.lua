@@ -1605,6 +1605,8 @@ debugprint(('+'):rep(#self.includeStack+1)..' #include '..fn)
 								end
 								lines:remove(i)
 								i = i - 1
+							elseif rest:match'^pack' then
+								-- keep pragma pack
 							else
 								lines[i] = '/* '..lines[i]..' */'
 							end

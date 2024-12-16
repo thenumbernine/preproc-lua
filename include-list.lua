@@ -781,9 +781,14 @@ includeList:append(table{
 	-- also anything that includes this will have the line before it:
 	--  `enum { __GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION = 1 };`
 	-- and that will have to be removed
-	{dontGen=true, inc='<bits/libc-header-start.h>', out='Linux/c/bits/libc-header-start.lua', final=function(code)
-		return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
-	end},
+	{
+		dontGen = true,
+		inc = '<bits/libc-header-start.h>',
+		out = 'Linux/c/bits/libc-header-start.lua',
+		final = function(code)
+			return remove_GLIBC_INTERNAL_STARTING_HEADER_IMPLEMENTATION(code)
+		end,
+	},
 
 	-- depends: features.h stddef.h bits/libc-header-start.h
 	{inc='<string.h>', out='Linux/c/string.lua'},
@@ -1090,10 +1095,6 @@ return setmetatable({}, {
 
 -- requires manual manipulation:
 
-	-- this is here for require() insertion but cannot be used for generation
-	-- it must be manually extracted from c/setjmp.lua
-	{dontGen=true, inc='<bits/setjmp.h>', out='Linux/c/bits/setjmp.lua'},
-
 	{
 		dontGen = true,
 		inc = '<bits/dirent.h>',
@@ -1104,12 +1105,20 @@ return setmetatable({}, {
 		end,
 	},
 
+	-- this is here for require() insertion but cannot be used for generation
+	-- it must be manually extracted from c/setjmp.lua
+	{
+		dontGen = true,
+		inc = '<bits/setjmp.h>',
+		out = 'Linux/c/bits/setjmp.lua',
+	},
+
 	-- this file doesn't exist. stdio.h and stdarg.h both define va_list, so I put it here
 	-- but i guess it doesn't even have to be here.
-	--{dontGen=true, inc='<va_list.h>', out='Linux/c/va_list.lua'},
+	--{dontGen = true, inc='<va_list.h>', out='Linux/c/va_list.lua'},
 
 	-- same with just.  just a placeholder:
-	--{dontGen=true, inc='<__FD_SETSIZE.h>', out='Linux/c/__FD_SETSIZE.lua'},
+	--{dontGen = true, inc='<__FD_SETSIZE.h>', out='Linux/c/__FD_SETSIZE.lua'},
 
 
 	-- depends on limits.h bits/posix1_lim.h
@@ -1265,6 +1274,7 @@ return setmetatable({}, {
 		end,
 	},
 
+	-- apt install libarchive-dev
 	{
 		inc='<archive.h>',
 		moreincs = {
@@ -2981,6 +2991,7 @@ return require 'ffi.load' 'openal'
 		flags = '-D__NO_INLINE__ -DPIL_NO_INLINE '..(pkgconfigFlags'python3' or ''),
 	},
 
+--[=[	TODO how about a flag for skipping a package in `make_all.lua all` ?
 	{
 		inc = '<mono/jit/jit.h>',
 		out = 'mono.lua',
@@ -3002,6 +3013,7 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 			return code
 		end,
 	},
+--]=]
 
 	{
 		inc = '<pulse/pulseaudio.h>',

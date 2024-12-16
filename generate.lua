@@ -156,8 +156,6 @@ end
 
 local preproc = ThisPreproc()
 
-error"TODO don't comment #pragma pack"
-
 --[[
 args:
 	-I<incdir> = add include dir

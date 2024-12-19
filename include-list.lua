@@ -2625,21 +2625,27 @@ return wrapper
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
 	{
-		inc = ffi.os ~= 'OSX'
-			and '<GL/gl.h>'				-- typical location
-			or '"OpenGL/gl.h"',		-- OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
-		moreincs = ffi.os ~= 'OSX'
-			and {'<GL/glext.h>'}
-			or {'"OpenGL/glext.h"'},
+		inc =
+		--[[ OSX ... but I'm putting it in local space cuz bleh framework namespace resolution means include pattern-matching, not appending like typical search paths use ... so until fixing the include resolution ...
+			ffi.os == 'OSX' and '"OpenGL/gl.h"' or
+		--]] -- osx brew mesa usees GL/gl.h instead of the crappy builtin OSX GL
+			'<GL/gl.h>',
+		moreincs =
+		--[[
+			ffi.os == 'OSX' and {'"OpenGL/glext.h"'} or
+		--]]
+			{'<GL/glext.h>'},
+		--[[
 		includedirs = ffi.os == 'OSX' and {'.'} or nil,
+		--]]
 		flags = '-DGL_GLEXT_PROTOTYPES',
 		out = ffi.os..'/OpenGL.lua',
 		os = ffi.os,
-		-- [[ TODO -framework equivalent ...
+		--[[ TODO -framework equivalent ...
 		includeDirMapping = ffi.os == 'OSX' and {
 			{['^OpenGL/(.*)$'] = '/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/System/Library/Frameworks/OpenGL.framework/Versions/A/Headers/%1'},
 		} or nil,
-		--]]
+		--]]	-- or not now that I'm using osx brew mesa instead of builtin crappy GL
 		skipincs = ffi.os == 'Windows' and {
 		-- trying to find out why my gl.h is blowing up on windows
 			'<winapifamily.h>',	-- verify please

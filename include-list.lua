@@ -2715,10 +2715,14 @@ return require 'ffi.load' 'openblas'
 		return code
 	end},
 
-	{inc='<lapack.h>', out='lapack.lua', final=function(code)
-		-- needs lapack_int replaced with int, except the enum def line
-		-- the def is conditional, but i think this is the right eval ...
-		code = safegsub(code, 'enum { lapack_int = 0 };', 'typedef int32_t lapack_int;')
+	{
+		inc = '<lapack.h>',
+		out = 'lapack.lua',
+		flags = pkgconfigFlags'lapack',
+		final = function(code)
+			-- needs lapack_int replaced with int, except the enum def line
+			-- the def is conditional, but i think this is the right eval ...
+			code = safegsub(code, 'enum { lapack_int = 0 };', 'typedef int32_t lapack_int;')
 --[[
 #if defined(LAPACK_ILP64)
 #define lapack_int        int64_t
@@ -2727,26 +2731,32 @@ return require 'ffi.load' 'openblas'
 #endif
 --]]
 
-		-- preproc on this generate a *LOT* of `enum { LAPACK_lsame_base = 0 };`
-		-- they are generated from macro calls to LAPACK_GLOBAL
-		-- which is defined as
-		-- #define LAPACK_GLOBAL(lcname,UCNAME)  lcname##_
-		-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
-		code = safegsub(code, 'enum { LAPACK_[_%w]+ = 0 };', '')
-		code = safegsub(code, '\n\n', '\n')
+			-- preproc on this generate a *LOT* of `enum { LAPACK_lsame_base = 0 };`
+			-- they are generated from macro calls to LAPACK_GLOBAL
+			-- which is defined as
+			-- #define LAPACK_GLOBAL(lcname,UCNAME)  lcname##_
+			-- ... soo ... I need to not gen enums for macros that do string manipulation or whatever
+			code = safegsub(code, 'enum { LAPACK_[_%w]+ = 0 };', '')
+			code = safegsub(code, '\n\n', '\n')
 
-		code = code .. [[
+			code = code .. [[
 return require 'ffi.load' 'lapack'
 ]]
-		return code
-	end},
+			return code
+		end,
+	},
 
-	{inc='<lapacke.h>', out='lapacke.lua', final=function(code)
-		code = code .. [[
+	{
+		inc = '<lapacke.h>',
+		out = 'lapacke.lua',
+		flags = pkgconfigFlags'lapacke',
+		final = function(code)
+			code = code .. [[
 return require 'ffi.load' 'lapacke'
 ]]
 		return code
-	end},
+		end,
+	},
 
 	-- libzip-dev
 	-- TODO #define ZIP_OPSYS_* is hex values, should be enums, but they are being commented out ...

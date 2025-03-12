@@ -3110,6 +3110,12 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 		-- tensorflow is failing when it includes <string.h>, which is funny because I already generate <string.h> above
 		-- something in it is pointing to <secure/_string.h>, which is redefining memcpy ... which is breaking my parser (tho it shouldnt break, but i don't want to fix it)
 		skipincs = (ffi.os == 'OSX') and {'<string.h>'} or {},
+		final = function(code)
+			code = code .. [[
+return require 'ffi.load' 'tensorflow'
+]]
+			return code
+		end,
 	},
 })
 

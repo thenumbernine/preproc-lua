@@ -412,6 +412,9 @@ EDABC(x)
 			paramMap[paramIndex] = paramvalue
 		else
 			local macrokey = vparams[paramIndex]
+			if not macrokey then
+				error("failed to find index "..tolua(paramIndex).." of vparams "..tolua(vparams))
+			end
 --DEBUG(Preproc:handleMacroWithArgs): debugprint('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
 			paramMap[macrokey] = paramvalue
 		end
@@ -1344,6 +1347,9 @@ function Preproc:__call(args)
 								lines[i] = self:getDefineCode(k, {
 									params = params,
 									def = paramdef,
+									-- for debugging
+									-- should this just be the filename+line, or the include-stack to the file too?
+--DEUBG:							stack = table(self.includeStack),
 								}, l)
 							else
 

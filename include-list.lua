@@ -3103,6 +3103,14 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 			return code
 		end,
 	},
+
+	{
+		inc = '<tensorflow/c/c_api.h>',
+		out = 'tensorflow.lua',
+		-- tensorflow is failing when it includes <string.h>, which is funny because I already generate <string.h> above
+		-- something in it is pointing to <secure/_string.h>, which is redefining memcpy ... which is breaking my parser (tho it shouldnt break, but i don't want to fix it)
+		skipincs = (ffi.os == 'OSX') and {'<string.h>'} or {},
+	},
 })
 
 -- now detect any duplicate #include paths and make sure they are going to distinct os-specific destination file names

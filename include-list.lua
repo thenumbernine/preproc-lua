@@ -2827,11 +2827,11 @@ also HDF5 has a lot of unused enums ...
 	--]]
 	{
 		inc = '<SDL2/SDL.h>',
-		out = 'sdl.lua',
+		out = 'sdl2.lua',
 		flags = pkgconfigFlags'sdl2',
 		includedirs = ({
 			Windows = {[[C:\Users\Chris\include\SDL2]]},
-			OSX = {[[/usr/local/Cellar/sdl2/2.30.6/include/SDL2/]]},
+			OSX = {[[/usr/local/Cellar/sdl2/2.32.4/include/SDL2/]]},
 		})[ffi.os],
 		skipincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {'<immintrin.h>'} or {},
 		silentincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {} or {'<immintrin.h>'},
@@ -2857,6 +2857,37 @@ return require 'ffi.load' 'SDL2'
 		end,
 	},
 
+	{
+		inc = '<SDL3/SDL.h>',
+		out = 'sdl3.lua',
+		flags = pkgconfigFlags'sdl3',
+		includedirs = ({
+			Windows = {[[C:\Users\Chris\include\SDL3]]},
+			OSX = {[[/usr/local/Cellar/sdl2/3.2.10/include/SDL3/]]},
+		})[ffi.os],
+		skipincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {'<immintrin.h>'} or {},
+		silentincs = (ffi.os == 'Windows' or ffi.os == 'OSX') and {} or {'<immintrin.h>'},
+		final = function(code)
+			code = commentOutLine(code, 'enum { SDL_begin_code_h = 1 };')
+
+			-- TODO comment out SDL3/SDL_config.h ... or just put it in silentincs ?
+			-- same with float.h
+
+			-- TODO evaluate this and insert it correctly?
+			code = code .. [=[
+ffi.cdef[[
+// these aren't being generated correctly so here they are:
+enum { SDL_WINDOWPOS_UNDEFINED = 0x1FFF0000u };
+enum { SDL_WINDOWPOS_CENTERED = 0x2FFF0000u };
+]]
+]=]
+
+			code = code .. [[
+return require 'ffi.load' 'SDL3'
+]]
+			return code
+		end,
+	},
 	{
 		inc = '<ogg/ogg.h>',
 		-- build this separately for each OS.

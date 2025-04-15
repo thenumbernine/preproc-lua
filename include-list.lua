@@ -1729,12 +1729,13 @@ includeList:append(table{
 
 
 	{
-		inc='"zlib.h"',
-		out='zlib.lua',
-		final=function(code)
-			-- ok I either need to have my macros smart-detect when their value is only used for types
-			-- or someone needs to rewrite the zlib.h and zconf.h to use `typedef` instead of `#define` when specifying types.
-			-- until either happens, I'm copying the zlib locally and changing its `#define` types to `typedef`.
+		-- ok I either need to have my macros smart-detect when their value is only used for types
+		-- or someone needs to rewrite the zlib.h and zconf.h to use `typedef` instead of `#define` when specifying types.
+		-- until either happens, I'm copying the zlib locally and changing its `#define` types to `typedef`.
+		inc = '"zlib/zlib.h"',
+		flags = '-I.',
+		out = 'zlib.lua',
+		final = function(code)
 
 			-- ... then add some macros onto the end manually
 			code = code .. [=[

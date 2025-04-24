@@ -1747,7 +1747,7 @@ wrapper = require 'ffi.libwrapper'{
 
 -- macros
 
-wrapper.ZLIB_VERSION = "1.2.12"
+wrapper.ZLIB_VERSION = "1.3.1"
 
 function wrapper.zlib_version(...)
 	return wrapper.zlibVersion(...)
@@ -1775,7 +1775,7 @@ end
 
 -- safe-call wrapper:
 function wrapper.pcall(fn, ...)
-	local f = assert(wrapper[fn])
+	local f = assert.index(wrapper, fn)
 	local result = f(...)
 	if result == wrapper.Z_OK then return true end
 	local errs = require 'ext.table'{
@@ -1785,7 +1785,7 @@ function wrapper.pcall(fn, ...)
 		'Z_MEM_ERROR',
 		'Z_BUF_ERROR',
 		'Z_VERSION_ERROR',
-	}:mapi(function(v) return v, assert(wrapper[v]) end):setmetatable(nil)
+	}:mapi(function(v) return v, (assert.index(wrapper, v)) end):setmetatable(nil)
 	local name = errs[result]
 	return false, fn.." failed with error "..result..(name and (' ('..name..')') or ''), result
 end
@@ -1801,14 +1801,16 @@ So for C compatability with the resulting data, just skip the first 8 bytes.
 --]]
 function wrapper.compressLua(src)
 	assert.type(src, 'string')
-	local srcLen = ffi.new'uLongf[1]'
+	local srcLen = ffi.new'uint64_t[1]'
 	srcLen[0] = #src
-	local dstLen = ffi.new('uLongf[1]', wrapper.compressBound(srcLen[0]))
+	if ffi.sizeof'uLongf' <= 4 and srcLen[0] >= 4294967296ULL then
+		error("overflow")
+	end
+	local dstLen = ffi.new('uLongf[1]', wrapper.compressBound(ffi.cast('uLongf', srcLen[0])))
 	local dst = ffi.new('Bytef[?]', dstLen[0])
-	assert(wrapper.pcall('compress', dst, dstLen, src, srcLen[0]))
+	assert(wrapper.pcall('compress', dst, dstLen, src, ffi.cast('uLongf', srcLen[0])))
 
 	local srcLenP = ffi.cast('uint8_t*', srcLen)
-	assert.eq(ffi.sizeof'uLongf', 8)
 	local dstAndLen = ''
 	for i=0,7 do
 		dstAndLen=dstAndLen..string.char(srcLenP[i])
@@ -1821,18 +1823,20 @@ function wrapper.uncompressLua(srcAndLen)
 	assert.type(srcAndLen, 'string')
 	-- there's no good way in the zlib api to tell how big this will need to be
 	-- so I'm saving it as the first 8 bytes of the data
-	assert.eq(ffi.sizeof'uLongf', 8)
 	local dstLenP = ffi.cast('uint8_t*', srcAndLen)
 	local src = dstLenP + 8
 	local srcLen = #srcAndLen - 8
-	local dstLen = ffi.new'uLongf[1]'
+	local dstLen = ffi.new'uint64_t[1]'
 	dstLen[0] = 0
 	for i=7,0,-1 do
 		dstLen[0] = bit.bor(bit.lshift(dstLen[0], 8), dstLenP[i])
 	end
+	if ffi.sizeof'uLongf' <= 4 and dstLen[0] >= 4294967296ULL then
+		error("overflow")
+	end
 
 	local dst = ffi.new('Bytef[?]', dstLen[0])
-	assert(wrapper.pcall('uncompress', dst, dstLen, src, srcLen))
+	assert(wrapper.pcall('uncompress', dst, ffi.cast('uLongf*', dstLen), src, srcLen))
 	return ffi.string(dst, dstLen[0])
 end
 

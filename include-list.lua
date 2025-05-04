@@ -3149,10 +3149,20 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 		end,
 	},
 
-	{
-		inc = '<libelf.h>',
+	{	-- libelf
+		inc = '<gelf.h>',		-- gelf.h -> libelf.h -> elf.h
+		moreincs = {
+			'<elfutils/version.h>',
+			'<elfutils/elf-knowledge.h>',
+		},
+		-- there's also elfutils/elf-knowledge.h and elfutils/version.h ...
 		out = 'elf.lua',
 		final = function(code)
+			-- #define ELF_F_DIRTY ELF_F_DIRTY before enum ELF_F_DIRTY causes this:
+			code = removeEnum(code, 'ELF_F_DIRTY = 0')
+			code = removeEnum(code, 'ELF_F_LAYOUT = 0')
+			code = removeEnum(code, 'ELF_F_PERMISSIVE = 0')
+			code = removeEnum(code, 'ELF_CHF_FORCE = 0')
 			code = code .. '\n'
 				.."return require 'ffi.load' 'elf'\n"
 			return code

@@ -3155,6 +3155,7 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 		final = function(code)
 			code = code .. '\n'
 				.."return require 'ffi.load' 'elf'\n"
+			return code
 		end,
 	},
 

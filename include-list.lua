@@ -17,7 +17,7 @@ local table = require 'ext.table'
 local io = require 'ext.io'
 local tolua = require 'ext.tolua'
 
--- needs to match generate.lua or make_all.lua or wherever i'm setting it.
+-- needs to match generate.lua or make.lua or wherever i'm setting it.
 local enumGenUnderscoreMacros = true
 
 -- for all these .final() functions,
@@ -414,7 +414,7 @@ return setmetatable({
 
 			-- corecrt_wio.h #define's types that I need, so typedef them here instead
 			-- TODO pick according to the current macros
-			-- but make_all.lua and generate.lua run in  separate processes, so ....
+			-- but make.lua and generate.lua run in  separate processes, so ....
 			code = code .. [=[
 ffi.cdef[[
 /* #ifdef _USE_32BIT_TIME_T
@@ -2633,8 +2633,8 @@ return wrapper
 	},
 
 	-- inc is put last before flags
-	-- but inc is what the make_all.lua uses
-	-- so this has to be built make_all.lua GL/glext.h
+	-- but inc is what the make.lua uses
+	-- so this has to be built make.lua GL/glext.h
 	-- but that wont work either cuz that will make the include to GL/glext.h into a split out file (maybe it should be?)
 	-- for Windows I've got my glext.h outside the system paths, so you have to add that to the system path location.
 	-- notice that GL/glext.h depends on GLenum to be defined.  but gl.h include glext.h.  why.
@@ -3052,7 +3052,7 @@ return require 'ffi.load' 'openal'
 		flags = '-D__NO_INLINE__ -DPIL_NO_INLINE '..(pkgconfigFlags'python3' or ''),
 	},
 
---[=[	TODO how about a flag for skipping a package in `make_all.lua all` ?
+--[=[	TODO how about a flag for skipping a package in `make.lua all` ?
 	{
 		inc = '<mono/jit/jit.h>',
 		out = 'mono.lua',
@@ -3146,6 +3146,15 @@ return ffi.load '/usr/lib/libmono-2.0.so'
 			code = code .. '\n'
 				.."return require 'ffi.load' 'clip'\n"
 			return code
+		end,
+	},
+
+	{
+		inc = '<libelf.h>',
+		out = 'elf.lua',
+		final = function(code)
+			code = code .. '\n'
+				.."return require 'ffi.load' 'elf'\n"
 		end,
 	},
 

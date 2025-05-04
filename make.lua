@@ -30,7 +30,7 @@ end
 
 req = req[1]
 
-if not req then error("make_all.lua all for all, or make_all.lua <some filename>") end
+if not req then error("make.lua all for all, or make.lua <some filename>") end
 if req ~= 'all' then
 	
 	-- TODO seems using <> or "" now is essential for excluding recursive require's

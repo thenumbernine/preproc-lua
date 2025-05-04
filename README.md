@@ -10,7 +10,7 @@ Depends on:
 - [lua-ext](https://github.com/thenumbernine/lua-ext)
 - [lua-template](https://github.com/thenumbernine/lua-template)
 
-## `make_all.lua` ##
+## `make.lua` ##
 
 This generates a specific LuaJIT loader file for a specific C include file.
 It accepts either a specific header listed in the `include-list`, or it can generate all provided at once.

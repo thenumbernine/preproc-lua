@@ -223,6 +223,105 @@ local function fixasm(code)
 	end))
 end
 
+--[[
+args:
+	code = code,
+--]]
+local function makeLibWrapper(args)
+	local code = assert(args.code)
+
+	local lines = string.split(code, '\n')
+	assert.eq(lines:remove(1), "local ffi = require 'ffi'")
+	assert.eq(lines:remove(1), 'ffi.cdef[[')
+	assert.eq(lines:remove(), '')
+	assert.eq(lines:remove(), ']]')
+
+	-- undo the #include <-> require()'s, since they will go at the top
+	-- but there's none in libjpeg...
+	local requires = table()
+	local reqpat = '^'
+		..string.patescape"]] "
+		.."(require 'ffi.req' '.*')"
+		..string.patescape"' ffi.cdef[["
+		..'$'
+	for i=#lines,1,-1 do
+		local line = lines[i]
+		local req = line:match(reqpat)
+		if req then
+			lines:remove(i)
+			requires:insert(1, req)
+		end
+	end
+
+	code = lines:concat'\n'
+
+	local CHeaderParser = require 'c-h-parser'
+	local header = CHeaderParser()
+-- debugging
+path'~before-c-h-parser.h':write(code)
+	assert(header(code))
+
+	if args.insertRequires then
+		requires = table(args.insertRequires):append(requires)
+	end
+
+	code = table{
+		"local ffi = require 'ffi'",
+		'\n-- typedefs\n',
+		requires:concat'\n',
+		'ffi.cdef[[',
+		header.declTypes:mapi(function(node)
+			return node:toC()..';'
+		end):concat'\n',
+		']]',
+		[[
+
+local wrapper
+wrapper = require 'ffi.libwrapper'{]],
+	}:append(
+		args.libname and {[[	lib = require 'ffi.load' ']]..args.libname..[[',]]} or nil
+	):append{
+[[
+	defs = {
+		-- enums
+]],
+		header.anonEnumValues:mapi(function(node)
+			return '\t\t'..node:toC()..','
+		end):concat'\n',
+
+		'\n\t\t-- functions\n',
+
+		header.symbolsInOrder:mapi(function(node)
+			-- assert it is a decl
+			assert.is(node, header.ast._decl)
+			assert.len(node.subdecls, 1)
+			-- get name-most ...
+			local name = node.subdecls[1]
+			while type(name) ~= 'string' do
+				name = name[1]
+			end
+			-- remove extern qualifier if it's there
+			node.stmtQuals.extern = nil
+			return '\t\t'
+				..name..' = [['
+				..node:toC()
+				..';]],'
+		end):concat'\n',
+	}:append(
+		libDefs and {'\t\t'..libDefs:gsub('\n', '\n\t\t')} or nil
+	):append{
+		[[
+	},
+}]],
+	}:append(
+		args.footerCode and {args.footerCode} or nil
+	):append{
+		'return wrapper',
+	}:concat'\n'..'\n'
+
+	return code
+end
+
 local includeList = table()
 
 -- files found in multiple OS's will go in [os]/[path]
@@ -2595,13 +2694,15 @@ return require 'ffi.load' 'OpenCL'
 		out = 'jpeg.lua',
 		--]
 		final = function(code)
-			local libname = 'jpeg'
-			local insertRequires = table{
-				"require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...",
+			return makeLibWrapper{
+				code = code,
+				libname = 'jpeg',
+				insertRequires = {
+					"require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...",
 
-				-- I guess I have to hard-code the OS-specific typedef stuff that goes in the header ...
-				-- and then later gsub out these typedefs in each OS that generates it...
-				[=[
+					-- I guess I have to hard-code the OS-specific typedef stuff that goes in the header ...
+					-- and then later gsub out these typedefs in each OS that generates it...
+					[=[
 
 -- TODO does this discrepency still exist in Windows' LibJPEG Turbo 3.0.4 ?
 if ffi.os == 'Windows' then
@@ -2616,8 +2717,8 @@ typedef int boolean;
 ]]
 end
 ]=]
-			}
-			local footerCode = [[
+				},
+				footerCode = [[
 
 -- these are #define's in jpeglib.h
 
@@ -2630,92 +2731,8 @@ end
 function wrapper.jpeg_create_decompress(cinfo)
 	return wrapper.jpeg_CreateDecompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_decompress_struct')
 end
-
 ]]
-
-
-
-			local lines = string.split(code, '\n')
-			assert.eq(lines:remove(1), "local ffi = require 'ffi'")
-			assert.eq(lines:remove(1), 'ffi.cdef[[')
-			assert.eq(lines:remove(), '')
-			assert.eq(lines:remove(), ']]')
-
-			-- undo the #include <-> require()'s, since they will go at the top
-			-- but there's none in libjpeg...
-			local requires = table()
-			local reqpat = '^'
-				..string.patescape"]] "
-				.."(require 'ffi.req' '.*')"
-				..string.patescape"' ffi.cdef[["
-				..'$'
-			for i=#lines,1,-1 do
-				local line = lines[i]
-				local req = line:match(reqpat)
-				if req then
-					lines:remove(i)
-					requires:insert(1, req)
-				end
-			end
-
-			code = lines:concat'\n'
-
-			local CHeaderParser = require 'c-h-parser'
-			local header = CHeaderParser()
--- debugging
-path'~before-c-h-parser.h':write(code)
-			assert(header(code))
-
-			requires = table(insertRequires):append(requires)
-
-			code = table{
-				"local ffi = require 'ffi'",
-				'\n-- typedefs\n',
-				requires:concat'\n',
-				'ffi.cdef[[',
-				header.declTypes:mapi(function(node)
-					return node:toC()..';'
-				end):concat'\n',
-				']]',
-				[[
-
-local wrapper
-wrapper = require 'ffi.libwrapper'{
-	lib = require 'ffi.load' ']]..libname..[[',
-	defs = {
-		-- enums
-]],
-				header.anonEnumValues:mapi(function(node)
-					return '\t\t'..node:toC()..','
-				end):concat'\n',
-
-				'\n\t\t-- functions\n',
-
-				header.symbolsInOrder:mapi(function(node)
-					-- assert it is a decl
-					assert.is(node, header.ast._decl)
-					assert.len(node.subdecls, 1)
-					local name = node.subdecls[1]	-- get name-most ...
-					while type(name) ~= 'string' do
-						name = name[1]
-					end
-					return '\t\t'
-						..name..' = [['
-						..node:toC()
-						..';]],'
-				end):concat'\n',
-			}:append(
-				libDefs and {'\t\t'..libDefs:gsub('\n', '\n\t\t')} or nil,
-			):append{
-				[[
-	},
-}
-]],
-				footerCode or '',
-				'return wrapper',
-			}:concat'\n'
-
-			return code
+			}
 		end,
 		ffiload = {
 			jpeg = {

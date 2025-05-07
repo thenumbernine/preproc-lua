@@ -12,6 +12,8 @@ TODO an exhaustive way to generate all with the least # of intermediate files co
 
 local ffi = require 'ffi'
 local template = require 'template'
+local path = require 'ext.path'
+local assert = require 'ext.assert'
 local string = require 'ext.string'
 local table = require 'ext.table'
 local io = require 'ext.io'
@@ -2585,39 +2587,134 @@ return require 'ffi.load' 'OpenCL'
 	-- windows is using 2.0.4 just because 2.0.3 and cmake is breaking for msvc
 	{
 		inc = '<jpeglib.h>',
+		--[[ os-specific?  I unified it in the lua-ffi-bindings repo ...
 		out = ffi.os..'/jpeg.lua',
 		os = ffi.os,
+		--]]
+		-- [[
+		out = 'jpeg.lua',
+		--]
 		final = function(code)
-			code = [[
-require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...
-]] .. code
-			code = code .. [[
+			local libname = 'jpeg'
+			local insertRequires = table{
+				"require 'ffi.req' 'c.stdio'	-- for FILE, even though jpeglib.h itself never includes <stdio.h> ... hmm ...",
+
+				-- I guess I have to hard-code the OS-specific typedef stuff that goes in the header ...
+				-- and then later gsub out these typedefs in each OS that generates it...
+				[=[
+
+-- TODO does this discrepency still exist in Windows' LibJPEG Turbo 3.0.4 ?
+if ffi.os == 'Windows' then
+	ffi.cdef[[
+typedef unsigned char boolean;
+typedef signed int INT32;
+]]
+else
+	ffi.cdef[[
+typedef long INT32;
+typedef int boolean;
+]]
+end
+]=]
+			}
+			local footerCode = [[
+
+-- these are #define's in jpeglib.h
+
+wrapper.LIBJPEG_TURBO_VERSION = '3.0.4'
+
+function wrapper.jpeg_create_compress(cinfo)
+	return wrapper.jpeg_CreateCompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_compress_struct')
+end
+
+function wrapper.jpeg_create_decompress(cinfo)
+	return wrapper.jpeg_CreateDecompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_decompress_struct')
+end
+
+]]
+
+
+
+			local lines = string.split(code, '\n')
+			assert.eq(lines:remove(1), "local ffi = require 'ffi'")
+			assert.eq(lines:remove(1), 'ffi.cdef[[')
+			assert.eq(lines:remove(), '')
+			assert.eq(lines:remove(), ']]')
+
+			-- undo the #include <-> require()'s, since they will go at the top
+			-- but there's none in libjpeg...
+			local requires = table()
+			local reqpat = '^'
+				..string.patescape"]] "
+				.."(require 'ffi.req' '.*')"
+				..string.patescape"' ffi.cdef[["
+				..'$'
+			for i=#lines,1,-1 do
+				local line = lines[i]
+				local req = line:match(reqpat)
+				if req then
+					lines:remove(i)
+					requires:insert(1, req)
+				end
+			end
+
+			code = lines:concat'\n'
+
+			local CHeaderParser = require 'c-h-parser'
+			local header = CHeaderParser()
+-- debugging
+path'~before-c-h-parser.h':write(code)
+			assert(header(code))
+
+			requires = table(insertRequires):append(requires)
+
+			code = table{
+				"local ffi = require 'ffi'",
+				'\n-- typedefs\n',
+				requires:concat'\n',
+				'ffi.cdef[[',
+				header.declTypes:mapi(function(node)
+					return node:toC()..';'
+				end):concat'\n',
+				']]',
+				[[
+
 local wrapper
 wrapper = require 'ffi.libwrapper'{
-	lib = require 'ffi.load' 'jpeg',
+	lib = require 'ffi.load' ']]..libname..[[',
 	defs = {
-		-- TODO have the autogenerate produce libwrappers:
-
 		-- enums
+]],
+				header.anonEnumValues:mapi(function(node)
+					return '\t\t'..node:toC()..','
+				end):concat'\n',
 
-		-- functions
+				'\n\t\t-- functions\n',
 
-		-- these are #define's in jpeglib.h
-
-		jpeg_create_compress = function()
-			return function(cinfo)
-				return wrapper.jpeg_CreateCompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_compress_struct')
-			end
-		end,
-		jpeg_create_decompress = function()
-			return function(cinfo)
-				return wrapper.jpeg_CreateDecompress(cinfo, wrapper.JPEG_LIB_VERSION, ffi.sizeof'struct jpeg_decompress_struct')
-			end
-		end,
+				header.symbolsInOrder:mapi(function(node)
+					-- assert it is a decl
+					assert.is(node, header.ast._decl)
+					assert.len(node.subdecls, 1)
+					local name = node.subdecls[1]	-- get name-most ...
+					while type(name) ~= 'string' do
+						name = name[1]
+					end
+					return '\t\t'
+						..name..' = [['
+						..node:toC()
+						..';]],'
+				end):concat'\n',
+			}:append(
+				libDefs and {'\t\t'..libDefs:gsub('\n', '\n\t\t')} or nil,
+			):append{
+				[[
 	},
 }
-return wrapper
-]]
+]],
+				footerCode or '',
+				'return wrapper',
+			}:concat'\n'
+
 			return code
 		end,
 		ffiload = {

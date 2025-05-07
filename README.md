@@ -112,3 +112,4 @@ To get around this I've created [`libwrapper.lua`](https://github.com/thenumbern
 This gets around the LuaJIT table limit.  Now you can export every symbol in your header without LuaJIT giving an error.
 But for now the headers are manually ported from `preproc` output to `libwrapper` output.  In the future I might autogen `libwrapper` output.
 - ... but not for long!  I made a [c-h-parser](https://github.com/thenumbernine/c-h-parser-lua) as a subclass of my [parser](https://github.com/thenumbernine/lua-parser) library, and now I can use it to auto-generate the libwrappers instead of by hand.
+- ... but now its one big problem is inserting `#define` enums versus inserting enum-enums ... TODO FIXME ...

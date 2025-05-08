@@ -169,38 +169,30 @@ function Preproc:getDefineCode(k, v, l)
 			-- tonumber'0x10' converts from base 16 ..
 			-- tonumber'010' converts from base 10 *NOT* base 8 ...
 --DEBUG(Preproc:getDefineCode): debugprint('line was', l)
-			local replaceline
 
 			local oldv = self.generatedEnums[k]
 			if oldv then
-				if oldv ~= v then
+				if oldv == v then
+					return '/* redefining matching value: '..l..' */'
+				else
 					print('/* WARNING: redefining '..k..' from '..tostring(oldv)..' to '..tostring(v).. ' (originally '..tostring(origv)..') */')
 					-- redefine the enum value as well?
 					-- I think in the macro world doing a #define a 1 #define a 2 will get a == 2, albeit with a warning.
-
-					replaceline = true
-				else
-					return '/* redefining matching value: '..l..' */'
 				end
-			else
-				replaceline = true
 			end
+
 			self.generatedEnums[k] = v
 
-			if replaceline then
-				assert.type(v, 'string')
-				-- [[ insert in-place? this will cause a luajit error
-				if not v:match'%.'		-- no floats
-				and not v:match'%de[+-]%d'	-- no exps
-				then
-					return 'enum { '..k..' = '..v..' };'
-				else
-					return '/* '..l..' ### string, number, replaceline '..tolua(v)..' */'
-				end
-				--]]
+			assert.type(v, 'string')
+			-- [[ insert in-place? this will cause a luajit error
+			if not v:match'%.'		-- no floats
+			and not v:match'%de[+-]%d'	-- no exps
+			then
+				return 'enum { '..k..' = '..v..' };'
 			else
-				return '/* '..l..' ### string, number, not replaceline '..tolua(v)..' */'
+				return '/* '..l..' ### string, number '..tolua(v)..' */'
 			end
+			--]]
 		else
 			-- string but not number ...
 			if v == '' then

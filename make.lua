@@ -38,7 +38,7 @@ for _,inc in ipairs(includeList) do
 		local outpath = outdir/inc.out
 		local dir, outfn = outpath:getdir()
 		dir:mkdir(true)
-		
+
 		if inc.forcecode then
 			-- just write it , proly a split between dif os versions
 			outpath:write(inc.forcecode)
@@ -87,12 +87,11 @@ ffi.cdef[[
 			if inc.enumGenUnderscoreMacros then
 				cmd:insert'-enumGenUnderscoreMacros'
 			end
-			cmd:append{
-				'>>',
-				outpath:escape(),
-			}
+			cmd:append{'>>', outpath:escape()}
+
 			cmd = cmd:concat' '
 			assert(os.exec(cmd))
+
 			outpath:append[=[
 ]]
 ]=]

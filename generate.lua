@@ -301,7 +301,7 @@ if ffi.os == 'Windows' then
 	skipfiles:insert'<vcruntime.h>'
 	--skipfiles:insert'<vcruntime_string.h>'	-- has memcpy ... wonder why did I remove this?
 	--skipfiles:insert'<corecrt_memcpy_s.h>'	-- contains inline functions
-	
+
 	-- how to know where these are?
 	preproc:addIncludeDirs({
 		-- what's in my VS 2022 Project -> VC++ Directories -> General -> Include Directories
@@ -398,7 +398,7 @@ do
 		elseif f == "-enumGenUnderscoreMacros" then
 			args:remove(i)
 			-- don't ignore underscore enums
-			-- needed by complex.h since there are some _ enums its post-processing depends on 
+			-- needed by complex.h since there are some _ enums its post-processing depends on
 			preproc.enumGenUnderscoreMacros = true
 		else
 			i = i + 1

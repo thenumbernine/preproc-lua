@@ -1,5 +1,4 @@
 #!/usr/bin/env luajit
-
 local ffi = require 'ffi'
 local path = require 'ext.path'
 local table = require 'ext.table'
@@ -8,7 +7,6 @@ local os = require 'ext.os'
 -- this holds the stuff thats working already
 -- but it's a separate file for the sake of generate.lua looking to see what to replace with require()'s
 local includeList = require 'include-list'
-
 -- remove all those that pertain to other os/arch
 includeList = includeList:filter(function(inc)
 	if inc.os ~= nil and inc.os ~= ffi.os then return end
@@ -16,23 +14,9 @@ includeList = includeList:filter(function(inc)
 	return true
 end)
 
-local luajit = 'luajit'
-
-local req = table{...}
--- see if we got any options ...
-for i=#req,1,-1 do
-	if req[i]:sub(1,7) == 'luajit=' then
-		luajit = req[i]:sub(8)
-		print('setting luajit to '..luajit)
-		req:remove(i)
-	end
-end
-
-req = req[1]
-
-if not req then error("make.lua all for all, or make.lua <some filename>") end
+local req = ...
+if not req then error("`make.lua all` for all, or `make.lua <sourceIncludeFile.h>`") end
 if req ~= 'all' then
-	
 	-- TODO seems using <> or "" now is essential for excluding recursive require's
 	if req:sub(1,1) ~= '<' and req:sub(1,1) ~= '"' then
 		error('must be system (<...>) or user ("...") include space')
@@ -47,24 +31,24 @@ if req ~= 'all' then
 	end
 end
 
-local outdirbase = 'results'	-- outdir without ffi/
-local outdir = outdirbase..'/ffi'
+local outdirbase = path'results'	-- outdir without ffi/
+local outdir = outdirbase/'ffi'
 for _,inc in ipairs(includeList) do
 	if not inc.dontGen then
-		local outpath = outdir..'/'..inc.out
-		local dir, outfn = path(outpath):getdir()
+		local outpath = outdir/inc.out
+		local dir, outfn = outpath:getdir()
 		dir:mkdir(true)
 		
 		if inc.forcecode then
 			-- just write it , proly a split between dif os versions
-			path(outpath):write(inc.forcecode)
+			outpath:write(inc.forcecode)
 		else
-			path(outpath):write[=[
+			outpath:write[=[
 local ffi = require 'ffi'
 ffi.cdef[[
 ]=]
 			local cmd = table{
-				luajit,
+				'luajit',
 --DEBUG:		'-lext.debug',	-- debugging? forward debug tags?
 				'generate.lua'
 			}
@@ -105,18 +89,18 @@ ffi.cdef[[
 			end
 			cmd:append{
 				'>>',
-				'"'..outpath..'"',
+				outpath:escape(),
 			}
 			cmd = cmd:concat' '
 			assert(os.exec(cmd))
-			path(outpath):append[=[
+			outpath:append[=[
 ]]
 ]=]
 			-- if there's a final-pass on the code then do it
 			if inc.final then
-				assert(path(outpath):write(
+				assert(outpath:write(
 					assert(inc.final(
-						assert(path(outpath):read())
+						assert(outpath:read())
 					), "expected final() to return a string")
 				))
 			end
@@ -125,8 +109,8 @@ ffi.cdef[[
 		if ffi.os == 'Windows' then
 			-- in windows, the linux code writes \n's, but the windows >> writes \r\n's,
 			-- so unify them all here, pick whichever format you want
-			path(outpath):write((
-				path(outpath):read()
+			outpath:write((
+				outpath:read()
 					:gsub('\r\n', '\n')
 			))
 		end

@@ -391,7 +391,7 @@ local function overlaps(a, b)
 end
 
 -- largest to smalleste
-local cSymbolEscs = table{
+local cSymbols = table{
 	'...',
 	'>>=',
 	'<<=',
@@ -414,8 +414,51 @@ local cSymbolEscs = table{
 	'&', '|', '~', '^', '!',
 	'.', '(', ')', '[', ']', '{', '}', '+', '-', '*', '/', '%',
 }:sort(function(a,b) return #a > #b end)
-:mapi(function(c) return '^'..string.patescape(c) end)
+local cSymbolSet = cSymbols:mapi(function(c) return true, c end):setmetatable(nil)
+local cSymbolEscs = cSymbols:mapi(function(c) return '^'..string.patescape(c) end)
 
+local function gettokentype(s, i)
+	i = i or 1
+	local tokentype, ti1, ti2
+	if s:find('^[_%a]', i) then
+		-- if we start as a word then read a word
+		ti1, ti2 = s:find('^[_%a][_%w]*', i)
+		tokentype = 'name'
+	elseif s:find('^%d', i) then
+		-- if we start as a number then read numbers
+		ti1, ti2 = s:find('^%d[%w]*', i)
+		tokentype = 'number'
+	elseif s:find("^'", i) then
+		ti1 = i
+		ti2 = ti1 + 1
+		if s:sub(ti2, ti2) == '\\' then ti2 = ti2 + 1 end
+		ti2 = ti2 + 1
+		assert.eq(s:sub(ti2, ti2), "'", 'at line '..s)
+		tokentype = 'char'
+	elseif s:find('^"', i) then
+		-- read string ... ugly
+		ti1 = i
+		ti2 = i
+		while true do
+			ti2 = ti2 + 1
+			if s:sub(ti2, ti2) == '\\' then
+				ti2 = ti2 + 1
+			elseif s:sub(ti2, ti2) == '"' then
+				break
+			end
+		end
+		tokentype = 'string'
+	else
+		-- see if it's a symbol, searching biggest to smallest
+		for k,esc in ipairs(cSymbolEscs) do
+			ti1, ti2 = s:find(esc, i)
+			if ti1 then break end
+		end
+		assert(ti1, "failed to find any valid symbols at "..s:sub(i, i+20))
+		tokentype = 'symbol'
+	end
+	return tokentype, ti1, ti2
+end
 
 local Reader = class()
 function Reader:setData(data)
@@ -441,46 +484,8 @@ function Reader:next()
 assert(si1)
 	local space = self.data:sub(si1, si2)
 	self.index = si2 + 1
-	-- TODO
-	local ti1, ti2
-	local tokentype
-	if self.data:find('^[_%a]', self.index) then
-		-- if we start as a word then read a word
-		ti1, ti2 = self.data:find('^[_%a][_%w]*', self.index)
-		tokentype = 'name'
-	elseif self.data:find('^%d', self.index) then
-		-- if we start as a number then read numbers
-		ti1, ti2 = self.data:find('^%d[%w]*', self.index)
-		tokentype = 'number'
-	elseif self.data:find("^'", self.index) then
-		ti1 = self.index
-		ti2 = ti1 + 1
-		if self.data:sub(ti2, ti2) == '\\' then ti2 = ti2 + 1 end
-		ti2 = ti2 + 1
-		assert.eq(self.data:sub(ti2, ti2), "'", 'at line '..self.data)
-		tokentype = 'char'
-	elseif self.data:find('^"', self.index) then
-		-- read string ... ugly
-		ti1 = self.index
-		ti2 = self.index
-		while true do
-			ti2 = ti2 + 1
-			if self.data:sub(ti2, ti2) == '\\' then
-				ti2 = ti2 + 1
-			elseif self.data:sub(ti2, ti2) == '"' then
-				break
-			end
-		end
-		tokentype = 'string'
-	else
-		-- see if it's a symbol, searching biggest to smallest
-		for k,esc in ipairs(cSymbolEscs) do
-			ti1, ti2 = self.data:find(esc, self.index)
-			if ti1 then break end
-		end
-		assert(ti1, "failed to find any valid symbols at "..self.data:sub(self.index, self.index+20))
-		tokentype = 'symbol'
-	end
+
+	local tokentype, ti1, ti2 = gettokentype(self.data, self.index)
 if not ti1 then error("failed to match at "..self.data:sub(self.index, self.index+20)) end
 	local token = self.data:sub(ti1, ti2)
 	self.index = ti2 + 1
@@ -513,15 +518,61 @@ function Reader:mustbetype(tokentype)
 	return assert(self:canbetype(tokentype))
 end
 
+local function determineSpace(prevEntry, thisEntry)
+	local space = ''
+	if prevEntry then
+		if (thisEntry.type == 'name' or thisEntry.type == 'number')
+		and (prevEntry.type == 'name' or prevEntry.type == 'number')
+		then
+			-- if the neighboring token types don't play well then put a space
+			space = ' '
+		else
+			-- if merging makes another valid token then put a space
+			if cSymbolSet[prevEntry.token..thisEntry.token] then
+				space = ' '
+			end
+		end
+	end
+	return space
+end
+
+-- lastToken = tokens[] entry underneath where it's going
+-- determines token type and determines what kind of space to use
+function makeTokenEntry(token, lastTokenStackEntry)
+assert.type(token, 'string')
+if lastTokenStackEntry ~= nil then assert.type(lastTokenStackEntry, 'table') end
+	local tokentype = gettokentype(token)
+	local newStackEntry = {token=token, type=tokentype}
+	newStackEntry.space = determineSpace(lastTokenStackEntry, newStackEntry)
+	return newStackEntry
+end
+
+function Reader:setStackToken(loc, token)
+assert.type(loc, 'number')
+assert.type(token, 'string')
+	--[[
+	local thisEntry = makeTokenEntry(token, self.tokens[loc-1])
+	self.tokens[loc] = thisEntry
+	local nextEntry = self.tokens[loc+1]
+	if nextEntry then
+		nextEntry.space = determineSpace(thisEntry, nextEntry)
+	end
+	--]]
+	-- [[ works but extra space
+	self.tokens[loc] = {token=token, type='name', space=' '}
+	--]]
+end
+
 function Reader:replaceStack(startPos, endPos, ...)
 	for i=startPos,endPos do
 		assert(self.tokens:remove(startPos))
 	end
-	for i=select('#',...),1,-1 do
-		self.tokens:insert(startPos, (select(i, ...)))
+	-- insert left to right, in order (not reversed), so that each token can see its predecessor in the stack
+	for i=1,select('#',...) do
+		local insloc = startPos+i-1
+		self.tokens:insert(insloc, makeTokenEntry(select(i, ...), self.tokens[insloc-1]))
 	end
 end
-
 
 
 
@@ -573,7 +624,7 @@ assert.eq(r.tokens[#r.tokens-1].token, "defined")
 			-- I need the same mechanism that buffers token/tokenhistory to also buffer spaces...
 			-- and canbe/mustbe should also push into their own token history, not datareader's ...
 --DEBUG:print('before replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(r.tokens))
-			r:replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
+			r:replaceStack(macroTop, parCloseTop-1, repl)
 --DEBUG:print('after replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(r.tokens))
 
 		-- C99
@@ -613,7 +664,7 @@ assert.eq(r.tokens[#r.tokens-1].token, "_Pragma")
 				end
 			end
 			local repl = self:searchForInclude(fn, sys) and '1' or '0'
-			r:replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
+			r:replaceStack(macroTop, parCloseTop-1, repl)
 
 		-- clang
 		elseif r:canbe'__has_include_next' then
@@ -650,7 +701,7 @@ assert.eq(r.tokens[#r.tokens-1].token, "_Pragma")
 			end
 			local repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
 
-			r:replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
+			r:replaceStack(macroTop, parCloseTop-1, repl)
 		elseif r:canbetype'name' then
 --DEBUG:print('canbename for macro expansion:', key)
 ::tryagain::
@@ -662,7 +713,8 @@ assert.eq(r.tokens[#r.tokens-1].token, "_Pragma")
 				-- stupid windows hack
 				if v == '' and replaceEmptyWithZero then v = '0' end
 				-- TODO something about making sure names don't stick together or something, idk
-				r.tokens[macroTop] = {token=v, type='name', space=' '}	-- TODO type is not classified.
+				r:setStackToken(macroTop, v)
+				--r.tokens[macroTop] = {token=v, type='name', space=' '}
 				key = v
 				if not alreadyReplaced[key] then
 					alreadyReplaced[key] = true
@@ -1836,7 +1888,7 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 	io.stderr:flush()
 	--]]
 
-	--[[ join lines that don't end in a semicolon or comment
+	-- [[ join lines that don't end in a semicolon or comment
 	if self.joinNonSemicolonLines then
 		for i=#lines,1,-1 do
 			if lines[i]:sub(-2) ~= '*/' then

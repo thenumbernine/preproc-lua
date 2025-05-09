@@ -4,8 +4,7 @@ local table = require 'ext.table'
 local tolua = require 'ext.tolua'
 local path = require 'ext.path'
 local class = require 'ext.class'
-
-local has_ffi, ffi = pcall(require, 'ffi')
+local bit = require 'bit'			-- either luajit's, or my vanilla Lua compat wrapper lib ...
 
 local namepat = '[_%a][_%w]*'
 
@@ -417,6 +416,115 @@ local cSymbolEscs = table{
 }:sort(function(a,b) return #a > #b end)
 :mapi(function(c) return '^'..string.patescape(c) end)
 
+
+local Reader = class()
+function Reader:setData(data)
+	self.data = data
+	self.index = 1
+	self.tokens = table()	-- .token, .type, .space
+	self:next()		-- prep next symbol as top
+end
+
+function Reader:next()
+--DEBUG:print'GETTOKEN'
+	if self.index > #self.data then
+		if #self.tokens == 0
+		or self.tokens:last().type ~= 'done'
+		then
+			self.tokens:insert{token='', type='done', space=''}
+		end
+--DEBUG:print'...done'
+		return '', 'done', ''
+	end
+
+	local si1, si2 = self.data:find('^%s*', self.index)
+assert(si1)
+	local space = self.data:sub(si1, si2)
+	self.index = si2 + 1
+	-- TODO
+	local ti1, ti2
+	local tokentype
+	if self.data:find('^[_%a]', self.index) then
+		-- if we start as a word then read a word
+		ti1, ti2 = self.data:find('^[_%a][_%w]*', self.index)
+		tokentype = 'name'
+	elseif self.data:find('^%d', self.index) then
+		-- if we start as a number then read numbers
+		ti1, ti2 = self.data:find('^%d[%w]*', self.index)
+		tokentype = 'number'
+	elseif self.data:find("^'", self.index) then
+		ti1 = self.index
+		ti2 = ti1 + 1
+		if self.data:sub(ti2, ti2) == '\\' then ti2 = ti2 + 1 end
+		ti2 = ti2 + 1
+		assert.eq(self.data:sub(ti2, ti2), "'", 'at line '..self.data)
+		tokentype = 'char'
+	elseif self.data:find('^"', self.index) then
+		-- read string ... ugly
+		ti1 = self.index
+		ti2 = self.index
+		while true do
+			ti2 = ti2 + 1
+			if self.data:sub(ti2, ti2) == '\\' then
+				ti2 = ti2 + 1
+			elseif self.data:sub(ti2, ti2) == '"' then
+				break
+			end
+		end
+		tokentype = 'string'
+	else
+		-- see if it's a symbol, searching biggest to smallest
+		for k,esc in ipairs(cSymbolEscs) do
+			ti1, ti2 = self.data:find(esc, self.index)
+			if ti1 then break end
+		end
+		assert(ti1, "failed to find any valid symbols at "..self.data:sub(self.index, self.index+20))
+		tokentype = 'symbol'
+	end
+if not ti1 then error("failed to match at "..self.data:sub(self.index, self.index+20)) end
+	local token = self.data:sub(ti1, ti2)
+	self.index = ti2 + 1
+	self.tokens:insert{token=token, type=tokentype, space=space}
+--DEBUG:print('...next got', tolua(token), tolua(tokentype), tolua(space))
+	return token, tokentype, space
+end
+
+function Reader:canbe(token)
+	local last = self.tokens:last()
+	if token == last.token then
+		self:next()
+		return last.token
+	end
+end
+
+function Reader:mustbe(token)
+	return assert(self:canbe(token))
+end
+
+function Reader:canbetype(tokentype)
+	local last = self.tokens:last()
+	if tokentype == last.type then
+		self:next()
+		return last.token
+	end
+end
+
+function Reader:mustbetype(tokentype)
+	return assert(self:canbetype(tokentype))
+end
+
+function Reader:replaceStack(startPos, endPos, ...)
+	for i=startPos,endPos do
+		assert(self.tokens:remove(startPos))
+	end
+	for i=select('#',...),1,-1 do
+		self.tokens:insert(startPos, (select(i, ...)))
+	end
+end
+
+
+
+
 --[[
 argsonly = set to true to only expand macros that have arguments
 useful for if evaluation
@@ -436,160 +544,62 @@ function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString, re
 	local alreadyReplaced = {}
 
 --DEBUG:print('INIT DATA READER TO LINE', tolua(l))
-	local i = 1
-	local tokens = table()
-	local function gettoken()
---DEBUG:print'GETTOKEN'
-		if i > #l then
-			if #tokens == 0
-			or tokens:last().type ~= 'done'
-			then
-				tokens:insert{token='', type='done', space=''}
-			end
---DEBUG:print'...done'
-			return '', 'done', ''
-		end
-
-		local si1, si2 = l:find('^%s*', i)
-assert(si1)
-		local space = l:sub(si1, si2)
-		i = si2 + 1
-		-- TODO
-		local ti1, ti2
-		local tokentype
-		if l:find('^[_%a]', i) then
-			-- if we start as a word then read a word
-			ti1, ti2 = l:find('^[_%a][_%w]*', i)
-			tokentype = 'name'
-		elseif l:find('^%d', i) then
-			-- if we start as a number then read numbers
-			ti1, ti2 = l:find('^%d[%w]*', i)
-			tokentype = 'number'
-		elseif l:find("^'", i) then
-			ti1 = i
-			ti2 = ti1 + 1
-			if l:sub(ti2, ti2) == '\\' then ti2 = ti2 + 1 end
-			ti2 = ti2 + 1
-			assert.eq(l:sub(ti2, ti2), "'", 'at line '..l)
-			tokentype = 'char'
-		elseif l:find('^"', i) then
-			-- read string ... ugly
-			ti1 = i
-			ti2 = i
-			while true do
-				ti2 = ti2 + 1
-				if l:sub(ti2, ti2) == '\\' then
-					ti2 = ti2 + 1
-				elseif l:sub(ti2, ti2) == '"' then
-					break
-				end
-			end
-			tokentype = 'string'
-		else
-			-- see if it's a symbol, searching biggest to smallest
-			for k,esc in ipairs(cSymbolEscs) do
-				ti1, ti2 = l:find(esc, i)
-				if ti1 then break end
-			end
-			assert(ti1, "failed to find any valid symbols at "..l:sub(i, i+20))
-			tokentype = 'symbol'
-		end
-if not ti1 then error("failed to match at "..l:sub(i, i+20)) end
-		local token = l:sub(ti1, ti2)
-		i = ti2 + 1
-		tokens:insert{token=token, type=tokentype, space=space}
---DEBUG:print('...gettoken got', tolua(token), tolua(tokentype), tolua(space))
-		return token, tokentype, space
-	end
-
-	local function canbe(token)
-		local last = tokens:last()
-		if token == last.token then
-			gettoken()
-			return last.token
-		end
-	end
-
-	local function mustbe(token)
-		return assert(canbe(token))
-	end
-
-	function canbetype(tokentype)
-		local last = tokens:last()
-		if tokentype == last.type then
-			gettoken()
-			return last.token
-		end
-	end
-
-	local function mustbetype(tokentype)
-		return assert(canbetype(tokentype))
-	end
-
-	local function replaceStack(startPos, endPos, ...)
-		for i=startPos,endPos do
-			assert(tokens:remove(startPos))
-		end
-		for i=select('#',...),1,-1 do
-			tokens:insert(startPos, (select(i, ...)))
-		end
-	end
-
-	-- #tokens == 0 at first
-	gettoken()		-- prep next symbol as top
+	local r = Reader()
+	r:setData(l)
+	-- #tokens == 1 at first
 	repeat
-		local macroTop = #tokens		-- #tokens == 1 after first read
-		local key = tokens:last().token
---DEBUG:print('last', tolua(tokens:last()))
-		-- at first, #tokens == 1 here
-		if alsoDefined and canbe'defined' then
-			-- at first #tokens == 2 here, and look like {{'defined', ''}, {'(', ''}}
---DEBUG:print('got "defined", macroTop='..macroTop..', stack='..tolua(tokens))
-assert.eq(tokens[#tokens-1].token, "defined")
+		local macroTop = #r.tokens		-- #r.tokens == 1 after first read
+		local key = r.tokens:last().token
+--DEBUG:print('last', tolua(r.tokens:last()))
+		-- at first, #r.tokens == 1 here
+		if alsoDefined and r:canbe'defined' then
+			-- at first #r.tokens == 2 here, and look like {{'defined', ''}, {'(', ''}}
+--DEBUG:print('got "defined", macroTop='..macroTop..', stack='..tolua(r.tokens))
+assert.eq(r.tokens[#r.tokens-1].token, "defined")
 			-- defined, parenthesis are optional
-			local par = canbe'('
+			local par = r:canbe'('
 --DEBUG:print('searching for par?', not not par)
 
 			-- TODO what about defined(A##B) , can you even do that?
 			-- TODO HERE parse expressions, not just single macro names.  #define A || B is valid.
-			local query = mustbetype'name'
+			local query = r:mustbetype'name'
 
-			if par then mustbe')' end
-			local parCloseTop = #tokens	-- get tokens before reading ')' so we know the true #tokens at ) before it might get an end and not add to the stack ...
+			if par then r:mustbe')' end
+			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
 
 			local repl = macros[query] and '1' or '0'
 			-- replace with defined
 			-- TODO but the next symbol is primsed so ...
 			-- I need the same mechanism that buffers token/tokenhistory to also buffer spaces...
 			-- and canbe/mustbe should also push into their own token history, not datareader's ...
---DEBUG:print('before replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(tokens))
-			replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
---DEBUG:print('after replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(tokens))
+--DEBUG:print('before replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(r.tokens))
+			r:replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
+--DEBUG:print('after replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(r.tokens))
 
 		-- C99
-		elseif canbe'_Pragma' then
---DEBUG:print('got "_Pragma", stack', tolua(tokens))
-assert.eq(tokens[#tokens-1].token, "_Pragma")
+		elseif r:canbe'_Pragma' then
+--DEBUG:print('got "_Pragma", stack', tolua(r.tokens))
+assert.eq(r.tokens[#r.tokens-1].token, "_Pragma")
 			-- defined, parenthesis are optional
-			mustbe'('
+			r:mustbe'('
 			-- TODO macro expression processing
 			-- TODO check balanced ( )
-			local x = mustbetype'name'
-			mustbe')'
-			local parCloseTop = #tokens	-- get tokens before reading ')' so we know the true #tokens at ) before it might get an end and not add to the stack ...
-			replaceStack(macroTop, parCloseTop-1)
+			local x = r:mustbetype'name'
+			r:mustbe')'
+			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
+			r:replaceStack(macroTop, parCloseTop-1)
 
 		-- clang
-		elseif canbe'__has_include' then
---DEBUG:print('got "__has_include", stack', tolua(tokens))
-			local t1 = #tokens
-			mustbe'('
-			while not canbe')' do
+		elseif r:canbe'__has_include' then
+--DEBUG:print('got "__has_include", stack', tolua(r.tokens))
+			local t1 = #r.tokens
+			r:mustbe'('
+			while not r:canbe')' do
 				-- collect tokens into our include test
-				gettoken()
+				r:next()
 			end
-			local parCloseTop = #tokens	-- get tokens before reading ')' so we know the true #tokens at ) before it might get an end and not add to the stack ...
-			local x = tokens:sub(t1+1, parCloseTop-2):mapi(function(v) return v.space..v.token end):concat()
+			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
+			local x = r.tokens:sub(t1+1, parCloseTop-2):mapi(function(v) return v.space..v.token end):concat()
 --DEBUG:print('__has_include', x)
 
 			-- same as include_next
@@ -603,19 +613,19 @@ assert.eq(tokens[#tokens-1].token, "_Pragma")
 				end
 			end
 			local repl = self:searchForInclude(fn, sys) and '1' or '0'
-			replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
+			r:replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
 
 		-- clang
-		elseif canbe'__has_include_next' then
---DEBUG:print('got "__has_include_next", stack', tolua(tokens))
-			local t1 = #tokens
-			mustbe'('
-			while not canbe')' do
+		elseif r:canbe'__has_include_next' then
+--DEBUG:print('got "__has_include_next", stack', tolua(r.tokens))
+			local t1 = #r.tokens
+			r:mustbe'('
+			while not r:canbe')' do
 				-- collect tokens into our include test
-				gettoken()
+				r:next()
 			end
-			local parCloseTop = #tokens	-- get tokens before reading ')' so we know the true #tokens at ) before it might get an end and not add to the stack ...
-			local x = tokens:sub(t1+1, parCloseTop-2):mapi(function(v) return v.space..v.token end):concat()
+			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
+			local x = r.tokens:sub(t1+1, parCloseTop-2):mapi(function(v) return v.space..v.token end):concat()
 --DEBUG:print('__has_include_next', x)
 
 			-- same as include_next
@@ -640,8 +650,8 @@ assert.eq(tokens[#tokens-1].token, "_Pragma")
 			end
 			local repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
 
-			replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
-		elseif canbetype'name' then
+			r:replaceStack(macroTop, parCloseTop-1, {token=repl, type='number', space=' '})
+		elseif r:canbetype'name' then
 --DEBUG:print('canbename for macro expansion:', key)
 ::tryagain::
 			-- TODO this inside define() etc macro conditions I guess?  include too, can you do #include MACRO ?
@@ -652,7 +662,7 @@ assert.eq(tokens[#tokens-1].token, "_Pragma")
 				-- stupid windows hack
 				if v == '' and replaceEmptyWithZero then v = '0' end
 				-- TODO something about making sure names don't stick together or something, idk
-				tokens[macroTop] = {token=v, type='name', space=' '}	-- TODO type is not classified.
+				r.tokens[macroTop] = {token=v, type='name', space=' '}	-- TODO type is not classified.
 				key = v
 				if not alreadyReplaced[key] then
 					alreadyReplaced[key] = true
@@ -667,25 +677,24 @@ assert.eq(tokens[#tokens-1].token, "_Pragma")
 		-- but for #if expressions we want to evaluate < > as expression-trees
 		-- so we cn't handle < include/path.h > here
 		--[[
-		elseif canbe'<' then
+		elseif r:canbe'<' then
 			-- read until > I guess, for include or whatever else
 			-- can you do #include < MACRO > ?
-			while not (canbe'>' or canbetype'done') do
-				gettoken()
+			while not (r:canbe'>' or r:canbetype'done') do
+				r:next()
 			end
 --DEBUG:print("done with <>'s, got:")
---DEBUG:print(tolua(tokens))
+--DEBUG:print(tolua(r.tokens))
 		--]]
 		else
-			gettoken()
+			r:next()
 		end
-	-- i think done() triggers early ... we want to know when the next popped symbol is the done one ..
-	until canbetype'done'
---DEBUG:print('canbedone', canbetype'done')
+	until r:canbetype'done'
+--DEBUG:print('canbedone', r:canbetype'done')
 local lorig = l
 --DEBUG:print('BEFORE', l)
---DEBUG:print('tokens='..tolua(tokens))
-	l = tokens:mapi(function(v) return v.space..v.token end):concat()
+--DEBUG:print('tokens='..tolua(r.tokens))
+	l = r.tokens:mapi(function(v) return v.space..v.token end):concat()
 --DEBUG:print('AFTER', l)
 --DEBUG:assert.eq(lorig, l)
 
@@ -1827,7 +1836,7 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 	io.stderr:flush()
 	--]]
 
-	-- [[ join lines that don't end in a semicolon or comment
+	--[[ join lines that don't end in a semicolon or comment
 	if self.joinNonSemicolonLines then
 		for i=#lines,1,-1 do
 			if lines[i]:sub(-2) ~= '*/' then

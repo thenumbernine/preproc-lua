@@ -1,3 +1,12 @@
+--[[
+
+I'm currently breaking everything
+1) merge the preproic expr prarser with the noew entre preproc parser
+2) dont use its ast, instead eval as you go and replace the preproc parser stack values
+3) replace the foundIncompleteMacroLine line with just keep the parser parsing
+4) hoepfully handle #'s and ##'s while parsing
+5) parse parse parse parse parse
+--]]
 local assert = require 'ext.assert'
 local string = require 'ext.string'
 local table = require 'ext.table'
@@ -145,7 +154,6 @@ function Preproc:addIncludeDirs(dirs, ...)
 	end
 end
 
-
 function Preproc:searchForInclude(fn, sys, startHere)
 	local includeDirs = sys
 		and self.sysIncludeDirs
@@ -189,230 +197,46 @@ function Preproc:searchForInclude(fn, sys, startHere)
 	end
 end
 
-function Preproc:handleMacroWithArgs(l, key, vparams)
-	-- TODO multiline support
-	-- look for 'key' whatsoever
-	-- if we find it then switch to start expecting that opening parenthesis
-	-- and then tokenize or something.
-
-	local keyj,keyk = l:find(key)
-	if not keyj then return end
-
-	local beforekey = l:sub(keyj-1,keyj-1)
-	local afterkey = l:sub(keyk+1,keyk+1)
-	if beforekey:match'[_%w]'
-	or afterkey:match'[_%w]'
-	then
-		--[[
-		-- not a proper key , just a substring of one
-		-- TODO won't this skip some macros .. like if we have
-#define ABC ( x )
-#define EDABC ( x )
-		and then we do
-EDABC(x)
-		--]]
-		return
-	end
-
-	local pat = key..'%s*(%b())'
-	local j,k = l:find(pat)
-	 -- if we found KEY
-	 -- but not KEY( ... )
-	 -- but we did find KEY(
-	 -- then ...
-	if not j then
-
-		-- because 'defined' is special, skip it, and I guess hope nobody has its arg on a newline (what a mess)
-		if key ~= 'defined' then
-			if l:find(key..'%s*%(') then
---DEBUG(Preproc:handleMacroWithArgs): print("/* ### INCOMPLETE ARG MACRO ### "..key..' ### IN LINE ### '..l..' */')
-				self.foundIncompleteMacroWarningMessage = "/* ### INCOMPLETE ARG MACRO ### "..key
-					..' ### IN LINE ### '
-					..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
-					..' */'
-				-- ok in this case, how about we store the previous line
-				-- and then include it when processing macros the next time around?
-				-- seems like a horrible hack
-				-- just use a tokenizer or something
-				self.foundIncompleteMacroLine = l
-			end
-		end
-
-		return
-	end
-
-	local before = l:sub(j-1,j-1)
-	if before:match'[_%w]' then
-		return
-	end
-
---DEBUG(Preproc:handleMacroWithArgs): print('found macro', key)
---DEBUG(Preproc:handleMacroWithArgs): print('replacing from params '..tolua(vparams))
-
-	local paramStr = l:sub(j,k):match(pat)
-	paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
---DEBUG(Preproc:handleMacroWithArgs): print('found paramStr', paramStr)
-	-- so now split by commas, but ignore commas that are out of balance with parenthesis
-	local paramIndex = 0
-	local paramMap = {}
-	if not paramStr:match'^%s*$' then
-		local parcount = 0
-		local last = 1
-		local i = 1
-		while i <= #paramStr do
-			local ch = paramStr:sub(i,i)
-			if ch == '(' then
-				parcount = parcount + 1
-			elseif ch == ')' then
-				parcount = parcount - 1
-			elseif ch == '"' then
-				-- skip to the end of the quote
-				i = i + 1
-				while paramStr:sub(i,i) ~= '"' do
-					if paramStr:sub(i,i) == '\\' then
-						i = i + 1
-					end
-					i = i + 1
-				end
-			elseif ch == ',' then
-				if parcount == 0 then
-					local paramvalue = paramStr:sub(last, i-1)
-					paramIndex = paramIndex + 1
-
-					if #vparams == 1 and vparams[1] == '...' then
-						-- varargs ... use ... indexes?  numbers?  strings?
-						paramMap[paramIndex] = paramvalue
-					else
-						if not vparams[paramIndex] then
-							error('failed to find paramIndex '..tostring(paramIndex)..'\n'
-								..' key='..tostring(key)..'\n'	-- macro name
-								..' vparams='..require'ext.tolua'(vparams)..'\n'	-- macro arguments
-								--..' paramStr='..tostring(paramStr)..'\n'
-								..' paramvalue='..tostring(paramvalue)..'\n'
-								..' l='..tostring(l)..'\n'	-- line we are replacing
-								..' paramMap='..tolua(paramMap)..'\n'
-							)
-						end
-						paramMap[vparams[paramIndex]] = paramvalue
-					end
-					last = i + 1
-				end
-			end
-			i = i + 1
-		end
-		assert.eq(parcount, 0, "macro mismatched ()'s")
-		local paramvalue = paramStr:sub(last)
-		paramIndex = paramIndex + 1
-
-		if #vparams == 1 and vparams[1] == '...' then
-			-- varargs
-			paramMap[paramIndex] = paramvalue
-		else
-			local macrokey = vparams[paramIndex]
-			if not macrokey then
-				error("failed to find index "..tolua(paramIndex).." of vparams "..tolua(vparams))
-			end
---DEBUG(Preproc:handleMacroWithArgs): print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
-			paramMap[macrokey] = paramvalue
-		end
-	end
-
-	-- if we were vararg matching this whole time ... should I replace it with a single-arg and concat the values?
-	if #vparams == 1 and vparams[1] == '...' then
-		paramMap = {['...'] = table.mapi(paramMap, function(v) return tostring(v) end):concat', '}
-	else
-		assert.eq(paramIndex, #vparams, "expanding macro "..key.." expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
-	end
-
-	return j, k, paramMap
-end
-
---[[
-returns true if the subset of the line from [j,k] is within a string literal token
-j = start index, k = end index
-checkingIncludeString = set to "true" only when expanding macros of #include statement -- then we'll check for the macro within "" strings (and ignore escapes) *and* search within <> strings
---]]
-local function isInString(line, j, k, checkingIncludeString)
-	if k < j then error("bad string range") end
-	local n = #line
-	if j < 1 or k < 1 or j > n or k > n then error("string range out of bounds") end
-	local i = 0
-	local inquote = false
-	while i <= n do
-		i = i + 1
-		local c = line:sub(i,i)
-
-		if checkingIncludeString then
-			-- #include string -- don't handle escapes, and optionally handle <>'s
-			if not inquote then
-				if c == '"'
-				or c == '<'
-				then
-					inquote = c
-				end
-			elseif inquote == '"' then
-				if c == '"' then
-					inquote = false
-				end
-			elseif inquote == '<' then
-				if c == '>' then
-					inquote = false
-				end
-			end
-		else
-			-- C string -- handle escapes
-			if not inquote then
-				if c == '"' then
-					inquote = true
-				end
-			else
-				if c == '\\' then
-					i = i + 1
-				end
-				if c == '"' then
-					inquote = false
-				end
-			end
-		end
-
-		if i >= j and i <= k then
-			if not inquote then
---DEBUG(Preproc isInString): print('isInString '..line..' '..j..' '..k..' : false')
-				return false
-			end
-		end
-	end
---DEBUG(Preproc isInString): print('isInString '..line..' '..j..' '..k..' : true')
-	return true
-end
-
-local function overlaps(a, b)
-	return a[1] <= b[2] and b[1] <= a[2]
-end
-
 -- largest to smalleste
 local cSymbols = table{
 	'...',
-	'>>=',
-	'<<=',
-	'||',
 	'&&',
+	'||',
+	'==',
 	'>=',
 	'<=',
 	'!=',
+	'<<',
+	'>>',
 	'->',
 	'##',
 	'++',
 	'--',
 	'>',
 	'<',
+	'!',
+	'&',
+	'|',
+	'+',
+	'-',
+	'*',
+	'/',
+	'%',
+	'^',
+	'~',
+	'(',
+	')',
+	'?',
+	':',	-- is there a need to parse :: separately? for C++?  nah, not for the preprocessor's expressions.
+	',',
 	'=',
 	';',
-	',',
-	'?', ':',	-- is there a need to parse :: separately? for C++?  nah, not for the preprocessor's expressions.
 	'#',
-	'&', '|', '~', '^', '!',
-	'.', '(', ')', '[', ']', '{', '}', '+', '-', '*', '/', '%',
+	'.',
+	'[',
+	']',
+	'{',
+	'}',
 }:sort(function(a,b) return #a > #b end)
 local cSymbolSet = cSymbols:mapi(function(c) return true, c end):setmetatable(nil)
 local cSymbolEscs = cSymbols:mapi(function(c) return '^'..string.patescape(c) end)
@@ -425,8 +249,34 @@ local function gettokentype(s, i)
 		ti1, ti2 = s:find('^[_%a][_%w]*', i)
 		tokentype = 'name'
 	elseif s:find('^%d', i) then
-		-- if we start as a number then read numbers
-		ti1, ti2 = s:find('^%d[%w]*', i)
+		-- TODO if you find a digit then go on to handle any suffix and then validate it later
+		if not ti1 then
+			ti1, ti2 = s:find('^0[Xx]%x+[Uu][Ll][Ll]', i)	-- ULL hex
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^%d+[Uu][Ll][Ll]', i)	-- ULL dec
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^0[Xx]%x+[Uu][Ll]', i)	-- UL hex
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^%d+[Uu][Ll]', i)	-- UL dec
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^0[Xx]%x+[Ll][Ll]', i) -- LL hex
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^%d+[Ll][Ll]', i)	-- LL dec
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^0[Xx]%x+[LlUu]?', i)	-- U/L hex
+		end
+		if not ti1 then
+			ti1, ti2 = s:find('^%d+[LlUu]?', i)		-- U/L dec
+		end
+		-- how about floats and [eE]+ stuff?
+
+		--ti1, ti2 = s:find('^%d[%w]*', i)	-- if we start as a number then read numbers
 		tokentype = 'number'
 	elseif s:find("^'", i) then
 		ti1 = i
@@ -461,20 +311,39 @@ local function gettokentype(s, i)
 end
 
 local Reader = class()
+function Reader:init(data)
+	self:resetData(data)
+end
+function Reader:resetData(data)
+	self.stack = setmetatable({}, {
+		__index = function(t,k)
+			if type(k) == 'number' and k < 0 then k = k + #self + 1 end
+			local v = rawget(self, k)
+			if v == nil then v = table[k] end
+			return v
+		end,
+		__newindex = function(t,k,v)
+			if type(k) == 'number' and k < 0 then k = k + #self + 1 end
+			rawset(self, k, v)
+		end,
+	})
+	-- each entry holds .token, .type, .space
+	self:setData(data)
+end
 function Reader:setData(data)
 	self.data = data
 	self.index = 1
-	self.tokens = table()	-- .token, .type, .space
 	self:next()		-- prep next symbol as top
 end
 
 function Reader:next()
---DEBUG:print'GETTOKEN'
+--DEBUG:print'Reader:next()'
 	if self.index > #self.data then
-		if #self.tokens == 0
-		or self.tokens:last().type ~= 'done'
+		if #self.stack == 0
+		or self.stack:last().type ~= 'done'
 		then
-			self.tokens:insert{token='', type='done', space=''}
+--DEBUG:print'...inserting type=done'
+			self.stack:insert{token='', type='done', space=''}
 		end
 --DEBUG:print'...done'
 		return '', 'done', ''
@@ -489,13 +358,13 @@ assert(si1)
 if not ti1 then error("failed to match at "..self.data:sub(self.index, self.index+20)) end
 	local token = self.data:sub(ti1, ti2)
 	self.index = ti2 + 1
-	self.tokens:insert{token=token, type=tokentype, space=space}
---DEBUG:print('...next got', tolua(token), tolua(tokentype), tolua(space))
+	self.stack:insert{token=token, type=tokentype, space=space}
+--DEBUG:print('...next got', tolua{token=token, type=tokentype, space=space})
 	return token, tokentype, space
 end
 
 function Reader:canbe(token)
-	local last = self.tokens:last()
+	local last = self.stack:last()
 	if token == last.token then
 		self:next()
 		return last.token
@@ -507,7 +376,7 @@ function Reader:mustbe(token)
 end
 
 function Reader:canbetype(tokentype)
-	local last = self.tokens:last()
+	local last = self.stack:last()
 	if tokentype == last.type then
 		self:next()
 		return last.token
@@ -516,6 +385,11 @@ end
 
 function Reader:mustbetype(tokentype)
 	return assert(self:canbetype(tokentype))
+end
+
+-- concats the currently-unprocessed top-of-stack with the rest of the data
+function Reader:whatsLeft()
+	return self.stack:last().token..self.data:sub(self.index)
 end
 
 local function determineSpace(prevEntry, thisEntry)
@@ -536,7 +410,7 @@ local function determineSpace(prevEntry, thisEntry)
 	return space
 end
 
--- lastToken = tokens[] entry underneath where it's going
+-- lastToken = stack[] entry underneath where it's going
 -- determines token type and determines what kind of space to use
 function makeTokenEntry(token, lastTokenStackEntry)
 assert.type(token, 'string')
@@ -550,318 +424,34 @@ end
 function Reader:setStackToken(loc, token)
 assert.type(loc, 'number')
 assert.type(token, 'string')
-	--[[
-	local thisEntry = makeTokenEntry(token, self.tokens[loc-1])
-	self.tokens[loc] = thisEntry
-	local nextEntry = self.tokens[loc+1]
+	--[[ TODO. This isn't working.  but I need it to work to remove spaces between symbols and numbers etc.
+	local thisEntry = makeTokenEntry(token, self.stack[loc-1])
+	self.stack[loc] = thisEntry
+	local nextEntry = self.stack[loc+1]
 	if nextEntry then
 		nextEntry.space = determineSpace(thisEntry, nextEntry)
 	end
 	--]]
 	-- [[ works but extra space
-	self.tokens[loc] = {token=token, type='name', space=' '}
+	self.stack[loc] = {token=token, type='name', space=' '}
 	--]]
 end
 
 function Reader:replaceStack(startPos, endPos, ...)
+	if startPos < 0 then startPos = startPos + 1 + #r.stack end
+	if endPos < 0 then endPos = endPos + 1 + #r.stack end
 	for i=startPos,endPos do
-		assert(self.tokens:remove(startPos))
+		assert(self.stack:remove(startPos))
 	end
 	-- insert left to right, in order (not reversed), so that each token can see its predecessor in the stack
 	for i=1,select('#',...) do
 		local insloc = startPos+i-1
-		self.tokens:insert(insloc, makeTokenEntry(select(i, ...), self.tokens[insloc-1]))
+		self.stack:insert(insloc, makeTokenEntry(select(i, ...), self.stack[insloc-1]))
 	end
 end
 
-
-
---[[
-argsonly = set to true to only expand macros that have arguments
-useful for if evaluation
-
-TODO THIS NEEDS TO HAVE STATE
-in the latest stdio.h there is a multiple-line-spanning-macro, so I can't get around it any more
-
-and that also might mean I need a tokenizer of some sort, to know when the parenthesis arguments begin and end
---]]
-function Preproc:replaceMacros(l, macros, alsoDefined, checkingIncludeString, replaceEmptyWithZero)
-	if l == '' then return l end
-
---DEBUG(Preproc:replaceMacros): print('replaceMacros begin: '..l)
-	macros = macros or self.macros
-
-	-- avoid infinite-recursive macros
-	local alreadyReplaced = {}
-
---DEBUG:print('INIT DATA READER TO LINE', tolua(l))
-	local r = Reader()
-	r:setData(l)
-	-- #tokens == 1 at first
-	repeat
-		local macroTop = #r.tokens		-- #r.tokens == 1 after first read
-		local key = r.tokens:last().token
---DEBUG:print('last', tolua(r.tokens:last()))
-		-- at first, #r.tokens == 1 here
-		if alsoDefined and r:canbe'defined' then
-			-- at first #r.tokens == 2 here, and look like {{'defined', ''}, {'(', ''}}
---DEBUG:print('got "defined", macroTop='..macroTop..', stack='..tolua(r.tokens))
-assert.eq(r.tokens[#r.tokens-1].token, "defined")
-			-- defined, parenthesis are optional
-			local par = r:canbe'('
---DEBUG:print('searching for par?', not not par)
-
-			-- TODO what about defined(A##B) , can you even do that?
-			-- TODO HERE parse expressions, not just single macro names.  #define A || B is valid.
-			local query = r:mustbetype'name'
-
-			if par then r:mustbe')' end
-			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
-
-			local repl = macros[query] and '1' or '0'
-			-- replace with defined
-			-- TODO but the next symbol is primsed so ...
-			-- I need the same mechanism that buffers token/tokenhistory to also buffer spaces...
-			-- and canbe/mustbe should also push into their own token history, not datareader's ...
---DEBUG:print('before replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(r.tokens))
-			r:replaceStack(macroTop, parCloseTop-1, repl)
---DEBUG:print('after replacing '..macroTop..'..'..parCloseTop..', stack='..tolua(r.tokens))
-
-		-- C99
-		elseif r:canbe'_Pragma' then
---DEBUG:print('got "_Pragma", stack', tolua(r.tokens))
-assert.eq(r.tokens[#r.tokens-1].token, "_Pragma")
-			-- defined, parenthesis are optional
-			r:mustbe'('
-			-- TODO macro expression processing
-			-- TODO check balanced ( )
-			local x = r:mustbetype'name'
-			r:mustbe')'
-			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
-			r:replaceStack(macroTop, parCloseTop-1)
-
-		-- clang
-		elseif r:canbe'__has_include' then
---DEBUG:print('got "__has_include", stack', tolua(r.tokens))
-			local t1 = #r.tokens
-			r:mustbe'('
-			while not r:canbe')' do
-				-- collect tokens into our include test
-				r:next()
-			end
-			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
-			local x = r.tokens:sub(t1+1, parCloseTop-2):mapi(function(v) return v.space..v.token end):concat()
---DEBUG:print('__has_include', x)
-
-			-- same as include_next
-			local sys = true
-			local fn = x:match'^<(.*)>$'
-			if not fn then
-				sys = false
-				fn = x:match'^"(.*)"$'
-				if not fn then
-					error("__has_include expected file, got "..tolua(x).." in line: "..l)
-				end
-			end
-			local repl = self:searchForInclude(fn, sys) and '1' or '0'
-			r:replaceStack(macroTop, parCloseTop-1, repl)
-
-		-- clang
-		elseif r:canbe'__has_include_next' then
---DEBUG:print('got "__has_include_next", stack', tolua(r.tokens))
-			local t1 = #r.tokens
-			r:mustbe'('
-			while not r:canbe')' do
-				-- collect tokens into our include test
-				r:next()
-			end
-			local parCloseTop = #r.tokens	-- get tokens before reading ')' so we know the true #r.tokens at ) before it might get an end and not add to the stack ...
-			local x = r.tokens:sub(t1+1, parCloseTop-2):mapi(function(v) return v.space..v.token end):concat()
---DEBUG:print('__has_include_next', x)
-
-			-- same as include_next
-			local sys = true
-			local fn = x:match'^<(.*)>$'
-			if not fn then
-				sys = false
-				fn = x:match'^"(.*)"$'
-				if not fn then
-					error("include expected file: "..l)
-				end
-			end
-
-			local foundPrevIncludeDir
-			for i=#self.includeStack,1,-1 do
-				local includeNextFile = self.includeStack[i]
-				local dir, prevfn = path(includeNextFile):getdir()
-				if prevfn.path == fn then
-					foundPrevIncludeDir = dir.path
-					break
-				end
-			end
-			local repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
-
-			r:replaceStack(macroTop, parCloseTop-1, repl)
-		elseif r:canbetype'name' then
---DEBUG:print('canbename for macro expansion:', key)
-::tryagain::
-			-- TODO this inside define() etc macro conditions I guess?  include too, can you do #include MACRO ?
-			local v = macros[key]
-			if type(v) == 'table' then	-- then the macro has parameters
-				-- TODO handle macro here
-			elseif type(v) == 'string' then
-				-- stupid windows hack
-				if v == '' and replaceEmptyWithZero then v = '0' end
-				-- TODO something about making sure names don't stick together or something, idk
-				r:setStackToken(macroTop, v)
-				--r.tokens[macroTop] = {token=v, type='name', space=' '}
-				key = v
-				if not alreadyReplaced[key] then
-					alreadyReplaced[key] = true
-					-- TODO something about repeated substitutions until all the macros are exhausted or something
-					goto tryagain
-				end
-			elseif v ~= nil then
-				error("macro had a bad type "..tolua(key).." = "..tolua(v))
-			end
-
-		-- TODO for #include's we want to handle < >
-		-- but for #if expressions we want to evaluate < > as expression-trees
-		-- so we cn't handle < include/path.h > here
-		--[[
-		elseif r:canbe'<' then
-			-- read until > I guess, for include or whatever else
-			-- can you do #include < MACRO > ?
-			while not (r:canbe'>' or r:canbetype'done') do
-				r:next()
-			end
---DEBUG:print("done with <>'s, got:")
---DEBUG:print(tolua(r.tokens))
-		--]]
-		else
-			r:next()
-		end
-	until r:canbetype'done'
---DEBUG:print('canbedone', r:canbetype'done')
-local lorig = l
---DEBUG:print('BEFORE', l)
---DEBUG:print('tokens='..tolua(r.tokens))
-	l = r.tokens:mapi(function(v) return v.space..v.token end):concat()
---DEBUG:print('AFTER', l)
---DEBUG:assert.eq(lorig, l)
-
-
--- TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
--- Get rid of the repeated find replace code below, and replace it with proper token based parser above
-
-	local found
-	repeat
-		found = nil
-		if not found then
-			--[[
-			for key,v in pairs(macros) do
-			--]]
-			-- [[
-			for _,key in ipairs(table.keys(macros):sort()) do
-				do--if not alreadyReplaced[key] then
-					local v = macros[key]
-				--]]
-
-					-- handle macro with args
-					if type(v) == 'table' then
-						local j, k, paramMap = self:handleMacroWithArgs(l, key, v.params)
-						if j then
-							if alreadyReplaced[key]
-							and overlaps(alreadyReplaced[key], {j,k})
-							then
---DEBUG(Preproc:replaceMacros): print('...but its in a previously-recursively-expanded location')
-							else
---DEBUG(Preproc:replaceMacros): print('replacing with params', tolua(v))
-								-- now replace all of v.params strings with params
-								local def = self:replaceMacros(v.def, paramMap, alsoDefined)
-								--[[
-								TODO space or nospace?
-								nospace = good for ## operator
-								space = good for subsequent tokenizer after replacing A()B(), to prevent unnecessary merges
-									gcc stdint.h:
-									#define __GLIBC_USE(F)	__GLIBC_USE_ ## F
-								I guess this is helping me make up my mind
-								--]]
-								local concatMarker = '$$$REMOVE_SPACES$$$'	-- something illegal / unused
-								def = def:gsub('##', concatMarker)
-								local origl = l
-								l = l:sub(1,j-1) .. ' ' .. def .. ' ' .. l:sub(k+1)
-								l = l:gsub('%s*'..string.patescape(concatMarker)..'%s*', '')
---DEBUG(Preproc:replaceMacros): print('from', origl, 'to', l)
-								-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-								if l ~= origl then
-									found = true
-								end
-								break
-							end
-						end
-					else
-						-- stupid windows hack
-						if v == '' and replaceEmptyWithZero then v = '0' end
-
-						local j,k
-						k = 0
-						while true do
-							j = k+1
-							-- handle macro without args
-							j,k = l:find(key,j)
-							if not j then break end
-							if not isInString(l, j, k, checkingIncludeString)  then
-								-- make sure the symbol before and after is not a name character
-								local before = l:sub(j-1,j-1)
-								-- technically no need to match 'after' since the greedy match would have included it, right?
-								-- same for 'before' ?
-								local after = l:sub(k+1,k+1)
-								if not before:match'[_%w]'
-								and not after:match'[_%w]'
-								then
---DEBUG(Preproc:replaceMacros): print('found macro', key)
-									if alreadyReplaced[key]
-									and overlaps(alreadyReplaced[key], {j,k})
-									then
---DEBUG(Preproc:replaceMacros): print('...but its in a previously-recursively-expanded location')
-										-- don't expand
-									else
---DEBUG(Preproc:replaceMacros): print('replacing with', v)
-										-- if the macro has params then expect a parenthesis after k
-										-- and replace all the instances of v's params in v'def with the values in those parenthesis
-
-										-- also when it comes to replacing macro params, C preproc uses () counting for the replacement
---DEBUG(Preproc:replaceMacros): local origl = l
-										l = l:sub(1,j-1) .. v .. l:sub(k+1)
---DEBUG(Preproc:replaceMacros): print('from', origl, 'to', l)
-										-- sometimes you get #define x x ... which wants you to keep the original and not replace forever
-										if l ~= origl then
-											found = true
-										end
-										-- but this won't stop if you have #define x A.x ... in which case you could still get stuck in a loop
-										-- instead I gotta make it so it just doesn't expand a second time
-										-- TODO do this for parameter-based macros also? #define x(y) A.x(y+1) ?
-										--
-										-- ok this is causing trouble with expressions, because it's preventing multiple expressions of the same macro from being expanded.
-										-- which makes me suspicious maybe I have to evaluate expressions macro-at-a-time?  but that means buliding a giant macro-dependency graph?
-										-- so I really only want to do this in self-referencing macros
-										--
-										-- so really we want to only not twice replace in the string region that the first macro expanded ....
-										-- ... smh
-										alreadyReplaced[key] = {j, j+#v-1}
-										break
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	until not found
---DEBUG(Preproc:replaceMacros): print('replaceMacros done: '..l)
-	return l
+function Reader:removeStack(loc)
+	self:replaceStack(loc, loc)
 end
 
 local function cliteralintegertonumber(x)
@@ -1006,381 +596,454 @@ function Preproc:evalAST(t)
 end
 
 
-function Preproc:parseCondInt(origexpr)
-	local expr = origexpr
-
-	assert(expr)
---DEBUG: print('evaluating condition:', expr)
-	-- does defined() work with macros with args?
-	-- if not then substitute macros with args here
-	-- if so then substitute it in the eval of macros later ...
-	--
+function Preproc:parseCondInt(r)
+	assert(r)
+--DEBUG:print('evaluating condition:', r)
 	-- ok so Windows gl.h will have in their macro if statements `MACRO && stmt` where MACRO is #define'd to be an empty string
 	-- so if we replace macros here then ... we get parse errors on the #if evaluation
 	-- Windows ... smh
-	-- so I've added a 5th arg to replaceMacros to substitute empty-strings with 0's .... sounds like a horrible idea ...
-	-- ... that's right Windows, it was a horrible idea to implicitly cast empty string macros to zeroes in macro statements.
-	expr = self:replaceMacros(expr, nil, true, nil, true)
---DEBUG: print('after macros:', expr)
+--DEBUG:print('after macros:', r)
 
-	local col = 1
 	local cond
-	local rethrow
-	xpcall(function()
-		local function readnext(pat)
-			local res = expr:sub(col):match('^'..pat)
-			if res then
-				col = col + #res
-				return res
+
+	local level1
+
+	local function level13()
+local top = #r.stack
+		if r:canbetype'number' then
+			local prev = r.stack[-2].token
+
+-- stack is {prev, nextqueued}
+
+			-- remove L/U suffix:
+			local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
+
+			-- put it back
+			-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
+			r:replaceStack(-2, -2, {
+				token = tostring(val),
+				type = 'number',
+				space = ' ',
+			})
+
+		elseif r:canbe'(' then
+			local node = level1()
+			r:mustbe')'
+-- stack is {'(', prev, ')', nextqueued}
+			r:removeStack(-4)
+			r:removeStack(-2)
+-- stack is {prev, nextqueued}
+		elseif r:canbe'defined' then
+			local par = r:canbe'('
+-- stack is {'(', nextqueued}
+			r:removeStack(-2)
+-- stack is {nextqueued}
+			r:mustbetype'name'
+			if par then
+				r:mustbe')'
+-- stack is {name, ')', nextqueued}
+				r:removeStack(-2)
 			end
-		end
+-- stack is {name, nextqueued}
+			r.stack[-2] = {
+				token = tostring(castnumber(self.macros[name])),
+				type = 'number',
+				space = ' ',
+			}
+		elseif r:canbe'_Pragma' then
+			-- here we want to eliminate the contents of the ()
+			-- so just reset the data and remove the %b()
+			local rest = string.trim(r:whatsLeft())
+			local par, rest = rest:match'^(%b())%s*(.*)$'
+assert(par)
+			r:setData(rest)
+			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
 
-		local function skipwhitespace()
-			readnext'%s*'
-		end
+		elseif r:canbe'__has_include'
+		or r:canbe'__has_include_next'
+		then
+			local prev = r.stack[-2].token
 
-		local ULhexpat = '0x%x+UL'
-		local ULdecpat = '%d+UL'
-		local LLhexpat = '0x%x+LL'
-		local LLdecpat = '%d+LL'
-		local hexpat = '0x%x+[LlU]?'
-		local decpat = '%d+[LlU]?'
+			r:mustbe'('
+			local rest = string.trim(r:whatsLeft())
 
-		local prev, cur
-		local function next()
-			skipwhitespace()
-			if col > #expr then
---DEBUG: print('done')
-				cur = ''
-				return cur
+			local fn, sys
+			if rest:match'^"' then
+				fn, rest = rest:match'^(%b"")%s*(.*)$'
+			elseif rest:match'^<' then
+				fn, rest = rest:match'^(%b<>)%s*(.*)$'
+				sys = true
+			else
+				error('expected <> or ""')
 			end
 
-			for _,pat in ipairs{
-				namepat,
-				ULhexpat,
-				ULdecpat,
-				LLhexpat,
-				LLdecpat,
-				hexpat,
-				decpat,
-				'&&',
-				'||',
-				'==',
-				'>=',
-				'<=',
-				'!=',
-				'<<',
-				'>>',
-				'>',
-				'<',
-				'!',
-				'&',
-				'|',
-				'%+',
-				'%-',
-				'%*',
-				'/',
-				'%%',
-				'%^',
-				'~',
-				'%(',
-				'%)',
-				'%?',
-				':',
-				',',
-			} do
-				local symbol = readnext(pat)
-				if symbol then
-					cur = symbol
---DEBUG: print('cur', cur)
-					return symbol
-				end
-			end
-
-			error("couldn't understand token here: "..('%q'):format(expr:sub(col)))
-		end
-
-		next()
-
-		local function canbe(pat)
-			if cur:match('^'..pat..'$') then
-				prev = cur
-				next()
-				return prev
-			end
-		end
-
-		local function mustbe(pat)
-			local this = cur
-			if not canbe(pat) then error("expected "..pat.." found "..this) end
-			return this
-		end
-
-		local level1
-
-		local function level13()
-			-- make sure you match hexpat first
-			if canbe(ULdecpat)
-			or canbe(ULhexpat)
-			then
-				local dec = prev:match'^(%d+)UL$'
-				local val
-				if dec then
-					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
-				else
-					val = assert(cliteralintegertonumber(prev:match'^(0x%x+)UL$'), "expected number")	-- hex number
-				end
-				assert(val)
-				local result = {'number', val}
---DEBUG: print('got', tolua(result))
-				return result
-			elseif canbe(LLdecpat)
-			or canbe(LLhexpat)
-			then
-				local dec = prev:match'^(%d+)LL$'
-				local val
-				if dec then
-					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
-				else
-					val = assert(cliteralintegertonumber(prev:match'^(0x%x+)LL$'), "expected number")	-- hex number
-				end
-				assert(val)
-				local result = {'number', val}
---DEBUG: print('got', tolua(result))
-				return result
-			elseif canbe(hexpat)
-			or canbe(decpat)
-			then
-				local dec = prev:match'^(%d+)[LlU]?$'
-				local val
-				if dec then
-					val = assert(cliteralintegertonumber(dec), "expected number")	-- decimal number
-				else
-					val = cliteralintegertonumber(prev:match'^(0x%x+)[LlU]?$')
-					if not val then
-						error("expected number from "..prev)	-- hex number
+			local repl
+			if prev == '__has_include' then
+				repl = self:searchForInclude(fn, sys) and '1' or '0'
+			elseif prev == '__has_include_next' then
+				local foundPrevIncludeDir
+				for i=#self.includeStack,1,-1 do
+					local includeNextFile = self.includeStack[i]
+					local dir, prevfn = path(includeNextFile):getdir()
+					if prevfn.path == fn then
+						foundPrevIncludeDir = dir.path
+						break
 					end
 				end
-				assert(val)
-				local result = {'number', val}
---DEBUG: print('got', tolua(result))
-				return result
-			elseif canbe'%(' then
-				local node = level1()
-				mustbe'%)'
---DEBUG: print('got', tolua(result))
-				return node
+				repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
+			end
 
-			-- have to handle 'defined' without () because it takes an implicit 1st arg
-			elseif canbe'defined' then
-				local name = mustbe(namepat)
-				local result = {'number', castnumber(self.macros[namepat])}
---DEBUG: print('got', tolua(result))
-				return result
-			elseif canbe(namepat) then
-				-- since we've already replaced all macros in the line, any unknown/remaining macro variable is going to evaluate to 0
-				local result = {'number', 0}
---DEBUG: print('got', tolua(result))
-				return result
+			r:setData(rest)		-- set new data, pushes next token on the stack
+			r:replaceStack(-2, repl)	-- replace the former-topmost stack with true or false
+
+			r:mustbe')'
+			r:removeStack(-2)
+
+		elseif r:canbetype'name' then
+			local k = r.stack[-2].token
+			local v = self.macros[k]
+
+
+			if type(v) == 'string' then
+				-- then we need to wedge our string into the to-be-parsed content ...
+				-- throw out the old altogether?
+				r:setData(v..r:whatsLeft())
+				r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+
+				level1()	-- when inserting macros, what level do I start at?
+
+			elseif type(v) == 'table' then
+				-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
+				-- otherwise I can just () balance regex and then insert it all into the current reader
+				local whatsLeft = r:whatsLeft()
+
+				whatsLeft = handleMacroArgs(whatsLeft, v.def)
+
+				-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
+				r:setData(whatsLeft)
+				r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+
+				level1()	-- when inserting macros, what level do I start at?
+
+			elseif type(v) == 'nil' then
+				-- any unknown/remaining macro variable is going to evaluate to 0
+				r.stack[-2] = {token='0', type='number', space=' '}
+			end
+		else
+			error("failed to parse expression: "..cur)
+		end
+assert.len(r.stack, top+1)
+	end
+
+	local function level12()
+local top = #r.stack
+		if r:canbe'+'
+		or r:canbe'-'
+		or r:canbe'!'
+		or r:canbe'~'
+		-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
+		then
+			level13()
+			local op = r.stack[-3].token
+-- stack is {'+'|'-'|'!'|'~', a, nextqueued}
+assert.ge(#r.stack, 3)
+assert(op == '+' or op == '-' or op == '!' or op == '~')
+
+			local a = castnumber(r.stack[-2].token)
+			local result
+			if op == '+' then
+				result = a
+			elseif op == '-' then
+				result = -a
+			elseif op == '!' then
+				result = a == 0 and 1 or 0
+			elseif op == '~' then
+				result = bit.bnot(a)
 			else
-				error("failed to parse expression: "..cur)
+				error'here'
 			end
+			r:replaceStack(-3, -2, {
+				token = tostring(result),
+				type = 'number',
+				space = ' ',
+			})
+		else
+			level13()
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level12()
-			if canbe'%+'
-			or canbe'%-'
-			or canbe'!'
-			or canbe'~'
-			-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
-			then
-				local op = prev
-				local b = level13()
-				local result = {op, b}
---DEBUG: print('got', tolua(result))
-				return result
+	local function level11()
+local top = #r.stack
+		level12()
+		if r:canbe'*' or r:canbe'/' or r:canbe'%' then
+			level11()
+			local op = r.stack[-3].token
+-- stack is {a, '*'|'/'|'%', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert(op == '*' or op == '/' or op == '%')
+			local a = castnumber(r.stack[-4].token)
+			local b = castnumber(r.stack[-2].token)
+			local result
+			if op == '*' then
+				result = a * b
+			elseif op == '/' then
+				result = a / b		-- always integer division?
+			elseif op == '%' then
+				result = a % b
+			else
+				error'here'
 			end
-			return level13()
+			r:replaceStack(-4, -2, {
+				token = tostring(result),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level11()
-			local a = level12()
-			if canbe'%*'
-			or canbe'/'
-			or canbe'%%'
-			then
-				local op = prev
-				local b = level11()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
+	local function level10()
+local top = #r.stack
+		level11()
+		if r:canbe'+' or r:canbe'-' then
+			level10()
+			local op = r.stack[-3].token
+-- stack is {a, '+'|'-', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert(op == '+' or op == '-')
+			local a = castnumber(r.stack[-4].token)
+			local b = castnumber(r.stack[-2].token)
+			local result
+			if op == '+' then
+				result = a + b
+			elseif op == '-' then
+				result = a - b
+			else
+				error'here'
 			end
-			return a
+			r:replaceStack(-4, -2, {
+				token = tostring(result),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level10()
-			local a = level11()
-			if canbe'%+'
-			or canbe'%-'
-			then
-				local op = prev
-				local b = level10()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
+	local function level9()
+local top = #r.stack
+		level10()
+		if r:canbe'>>' or r:canbe'<<' then
+			level9()
+			local op = r.stack[-3].token
+-- stack is {a, '>>'|'<<', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert(op == '>>' or op == '<<')
+			local a = castnumber(r.stack[-4].token)
+			local b = castnumber(r.stack[-2].token)
+			local result
+			if op == '>>' then
+				result = bit.rshift(a, b)
+			elseif op == '<<' then
+				result = bit.lshift(a, b)
+			else
+				error'here'
 			end
-			return a
+			r:replaceStack(-4, -2, {
+				token = tostring(result),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level9()
-			local a = level10()
-			if canbe'>>'
-			or canbe'<<'
-			then
-				local op = prev
-				local b = level9()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
+	local function level8()
+local top = #r.stack
+		level9()
+		if r:canbe'>='
+		or r:canbe'<='
+		or r:canbe'>'
+		or r:canbe'<'
+		then
+			level8()
+			local op = r.stack[-3].token
+-- stack is {a, '>='|'<='|'>'|'<', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert(op == '>=' or op == '<=' or op == '>' or op == '<')
+			local a = castnumber(r.stack[-4].token)
+			local b = castnumber(r.stack[-2].token)
+			local result
+			if op == '>=' then
+				result = a >= b and '1' or '0'
+			elseif op == '<=' then
+				result = a <= b and '1' or '0'
+			elseif op == '>' then
+				result = a > b and '1' or '0'
+			elseif op == '<' then
+				result = a < b and '1' or '0'
+			else
+				error'here'
 			end
-			return a
+			r:replaceStack(-4, -2, {
+				token = result,
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level8()
-			local a = level9()
-			if canbe'>='
-			or canbe'<='
-			or canbe'>'
-			or canbe'<'
-			then
-				local op = prev
-				local b = level8()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	local function level7()
+local top = #r.stack
+		level8()
+		if r:canbe'==' or r:canbe'!=' then
+			level7()
+			local op = r.stack[-3].token
+-- stack is {a, '=='|'!=', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert(op == '==' or op == '!=')
+			local a = castnumber(r.stack[-4].token)
+			local b = castnumber(r.stack[-2].token)
+			r:replaceStack(-4, -2, {
+				token = tostring(
+					op == '=='
+					and (a == b and '1' or '0')
+					or (a ~= b and '1' or '0')
+				),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level7()
-			local a = level8()
-			if canbe'=='
-			or canbe'!='
-			then
-				local op = prev
-				local b = level7()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	local function level6()
+local top = #r.stack
+		level7()
+		if r:canbe'&' then
+			level6()
+-- stack is {a, '&', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '&')
+			r:replaceStack(-4, -2, {
+				token = tostring(
+					bit.band(
+						castnumber(r.stack[-4].token),
+						castnumber(r.stack[-2].token)
+					)
+				),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level6()
-			local a = level7()
-			if canbe'&'
-			then
-				local op = prev
-				local b = level6()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	local function level5()
+local top = #r.stack
+		local a = level6()
+		if r:canbe'^' then
+			level5()
+-- stack is {a, '^', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '^')
+			r:replaceStack(-4, -2, {
+				token = tostring(
+					bit.bxor(
+						castnumber(r.stack[-4].token),
+						castnumber(r.stack[-2].token)
+					)
+				),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level5()
-			local a = level6()
-			if canbe'%^'
-			then
-				local op = prev
-				local b = level5()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	local function level4()
+local top = #r.stack
+		level5()
+		if r:canbe'|' then
+			level4()
+-- stack is {a, '|', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '|')
+			r:replaceStack(-4, -2, {
+				token = tostring(
+					bit.bor(
+						castnumber(r.stack[-4].token),
+						castnumber(r.stack[-2].token)
+					)
+				),
+				type = 'number',
+				space = ' ',
+			})
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level4()
-			local a = level5()
-			if canbe'|'
-			then
-				local op = prev
-				local b = level4()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	local function level3()
+local top = #r.stack
+		level4()
+		if r:canbe'&&' then
+			level3()
+-- stack should be {a, '&&', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '&&')
+			r:replaceStack(-4, -2, castnumber(r.stack[-4].token) == 0
+				and r.stack[-2]
+				or r.stack[-4])
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level3()
-			local a = level4()
-			if canbe'&&'
-			then
-				local op = prev
-				local b = level3()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	local function level2()
+local top = #r.stack
+		level3()
+		if r:canbe'||' then
+			level2()
+-- stack should be: {a, '||', b, nextqueued}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '||')
+			r:replaceStack(-4, -2, castnumber(r.stack[-4].token) ~= 0
+				and r.stack[-4]
+				or r.stack[-2])
 		end
+assert.len(r.stack, top+1)
+	end
 
-		local function level2()
-			local a = level3()
-			if canbe'||'
-			then
-				local op = prev
-				local b = level2()
-				local result = {op, a, b}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
+	level1 = function()
+local top = #r.stack
+		level2()
+		if r:canbe'?' then
+			level1()
+			r:mustbe':'
+			level1()
+-- stack stack should be: {a, '?', b, ':', c, nextqueued}
+assert.ge(#r.stack, 6)
+assert.eq(r.stack[-5].token, '?')
+assert.eq(r.stack[-3].token, ':')
+			r:replaceStack(-6, -2, castnumber(r.stack[-6].token) ~= 0
+				and r.stack[-4]
+				or r.stack[-2])
 		end
+assert.len(r.stack, top+1)
+	end
 
-		level1 = function()
-			local a = level2()
-			if canbe'%?'
-			then
-				local op = prev
-				local b = level1()
-				mustbe':'
-				local c = level1()
-				local result = {op, a, b, c}
---DEBUG: print('got', tolua(result))
-				return result
-			end
-			return a
-		end
+	local parse = level1()
 
-		local parse = level1()
+--DEBUG:print('got expression tree', tolua(parse))
+-- stack should be: {'#', 'if'/'elif', cond, nextqueued}
+assert.len(#r.stack, 4)
+	r:mustbetype'done'
+	local cond = castnumber(r.stack[-2].token)
 
---DEBUG: print('got expression tree', tolua(parse))
-
-		mustbe''
-
-		cond = self:evalAST(parse)
---DEBUG: print('got cond', cond)
-
-	end, function(err)
-		rethrow =
-			' at col '..col..'\n'
-			..' for orig expr:\n'
-			..origexpr..'\n'
-			..' for expr after macros:\n'
-			..expr..'\n'
-			..err..'\n'..debug.traceback()
-	end)
-	if rethrow then error(rethrow) end
+--DEBUG:print('got cond', cond)
 
 	return cond
-end
-
-function Preproc:parseCondExpr(expr)
-	return self:parseCondInt(expr) ~= 0
 end
 
 function Preproc:__call(args)
@@ -1452,77 +1115,62 @@ function Preproc:__call(args)
 						end
 					end
 				end
---DEBUG: print('line is', l, 'eval is', eval, 'preveval is', preveval)
 
-				l = string.trim(l)	-- trailing space doesn't matter, right?
-				if l:sub(1,1) == '#' then
-					local cmd, rest = l:match'^#%s*(%S+)%s*(.-)$'
---DEBUG: print('cmd is', cmd, 'rest is', rest)
+--DEBUG:print('line is '..tolua(l)..' eval is '..tolua(eval)..' preveval is '..tolua(preveval))
 
-					-- another windows irritation ...
-					if cmd then
-						local j = cmd:find'%('
-						if j then
-							rest = cmd:sub(j)..' '..rest
-							cmd = cmd:sub(1,j-1)
-						end
-					end
+				local function closeIf(cmd)
+					assert.gt(#ifstack, 0, 'found an #'..cmd..' without an #if')
+					ifstack:remove()
+				end
 
+				l = string.trim(l)
 
-					local function closeIf()
-						assert.gt(#ifstack, 0, 'found an #'..cmd..' without an #if')
-						ifstack:remove()
-					end
+				if l:match'^%s*#' then
+
+					local r = Reader(l)
+					r:mustbe'#'	-- expected right, unless this line starts with ##
+
+					-- another windows irritation ... `#cmd` and `#(cmd)` are both valid
+					local cmdpar = r:canbe'('
+					local cmd = r:mustbetype'name'
+					if cmdpar then r:mustbe')' end
+--DEBUG:print('got cmd '..tolua(cmd)..', after cmd is '..tolua(r:whatsLeft()))
 
 					if cmd == 'define' then
+--DEBUG:print'handling "define"'
 						if eval then
-							local k, params, paramdef = rest:match'^(%S+)%(([^)]*)%)%s*(.-)$'
-							if k then
-								assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---DEBUG: print('defining with params',k,params,paramdef)
-
-	-- [[ what if we're defining a macro with args?
-	-- at this point I probably need to use a parser on #if evaluations
-								local paramstr = params
-								params =
-									paramstr:match'^%s*$'
-									and table()
-									or string.split(paramstr, ','):mapi(string.trim)
-								for i,param in ipairs(params) do
-									assert(isvalidsymbol(param) or param == '...', "macro param #"..i.." is an invalid name: "..tostring(param))
+							local k = r:mustbetype'name'
+--DEBUG:print('got name='..tolua(k))
+							-- and now spaces matter ...
+							-- if the next parenthesis is space-separated then this is just a replacement-macro
+							-- but if there's no space then it is a function-macro
+							local par = r:canbe'('
+							if par
+							and self.stack[-2].space == ''
+							then
+								-- params
+								local params = table()
+								local first = true
+								while not r:canbe')' do
+									if not first then
+										r:mustbe','
+									end
+									first = false
+									params:insert(r:canbe'...' or r:mustbetype'name')
 								end
-
+								local paramdef = r:whatsLeft()
+--DEBUG:print('defining with params',params,paramdef)
+								-- by default returns '' to replace the line with empty
 								lines[i] = self:getDefineCode(k, {
 									params = params,
-									def = paramdef,
-									-- for debugging
-									-- should this just be the filename+line, or the include-stack to the file too?
---DEUBG:							stack = table(self.includeStack),
+									def = paramdef,	-- This is rest of the line to be parsed:
 								}, l)
 							else
-
-								local k, v = rest:match'^(%S+)%s+(.-)$'
-								if k then
-									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---DEBUG: print('defining value',k,v)
-									-- [[ evaluate macros of v?
-									-- and skip previous lines
-									self.foundIncompleteMacroWarningMessage = nil
-									--v = self:replaceMacros(v)
-									-- no, that'll be done in getDefineCode (right?()
-									--]]
-								else
-									k = rest
-									v = ''
-									assert.ne(k, '', "couldn't find what you were defining: "..l)
-									assert(isvalidsymbol(k), "tried to define an invalid macro name: "..tolua(k))
---DEBUG: print('defining empty',k,v)
-								end
-
-								--TODO lines[i] = ...
-								-- and then incorporate the enim {} into the code
-								lines[i] = self:getDefineCode(k, v, l)
---DEBUG: print('line is', l)
+--DEBUG:print('defining value',k,v)
+								local v = (par and '(' or '')..r:whatsLeft()
+								v = string.trim(v)
+								-- replace
+								lines[i] = self:getDefineCode(k, v)
 							end
 						else
 							lines:remove(i)
@@ -1531,16 +1179,16 @@ function Preproc:__call(args)
 					elseif cmd == 'if'
 					or cmd == 'elif'
 					then
---DEBUG: print('if/elif with eval', eval, 'preveval', preveval)
+--DEBUG:print('if/elif with eval', eval, 'preveval', preveval)
 						local hasprocessed = false
 						if cmd == 'elif' then
---DEBUG: print('closing via elif, #ifstack', require'ext.tolua'(ifstack))
+--DEBUG:print('closing via elif, #ifstack', require'ext.tolua'(ifstack))
 							local oldcond = ifstack:last()
 							hasprocessed = oldcond[1] or oldcond[2]
-							closeIf()
+							closeIf(cmd)
 						end
 
---DEBUG: print('hasprocessed', hasprocessed)
+--DEBUG:print('hasprocessed', hasprocessed)
 						local cond
 						if cmd == 'elif'
 						and hasprocessed
@@ -1557,18 +1205,20 @@ function Preproc:__call(args)
 							if (cmd == 'elif' and not preveval)
 							or (cmd == 'if' and not eval)
 							then
---DEBUG: print('elif skipping cond evaluation')
+--DEBUG:print('elif skipping cond evaluation')
 								cond = false
 							else
-								cond = self:parseCondExpr(rest)
+								cond = self:parseCondInt(r) ~= 0
 								assert(cond ~= nil, "cond must be true or false")
 							end
 						end
---DEBUG: print('got cond', cond, 'from', rest)
+--DEBUG:print('got cond', cond, 'from', r)
 						ifstack:insert{cond, hasprocessed}
 
 						lines:remove(i)
 						i = i - 1
+
+
 					elseif cmd == 'else' then
 						assert.gt(#ifstack, 0, "found an #else without an #if")
 						local oldcond = ifstack:last()
@@ -1578,30 +1228,33 @@ function Preproc:__call(args)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'ifdef' then
---DEBUG: print('ifdef looking for '..rest)
+						local rest = r:whatsLeft()
+--DEBUG:print('ifdef looking for '..rest)
 						assert(isvalidsymbol(rest))
 						local cond = not not self.macros[rest]
---DEBUG: print('got cond', cond)
+--DEBUG:print('got cond', cond)
 						ifstack:insert{cond, false}
 
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'ifndef' then
---DEBUG: print('ifndef looking for', rest)
+						local rest = r:whatsLeft()
+--DEBUG:print('ifndef looking for', rest)
 						assert(isvalidsymbol(rest), "tried to check ifndef a non-valid symbol "..tolua(rest))
 						local cond = not self.macros[rest]
---DEBUG: print('got cond', cond)
+--DEBUG:print('got cond', cond)
 						ifstack:insert{cond, false}
 
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'endif' then
 						assert.eq(rest, '', "found trailing characters after "..cmd)
-						closeIf()
+						closeIf(cmd)
 						ifHandled = nil
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'undef' then
+						local rest = r:whatsLeft()
 						assert(isvalidsymbol(rest))
 						if eval then
 							--[[
@@ -1617,23 +1270,26 @@ function Preproc:__call(args)
 							i = i - 1
 						end
 					elseif cmd == 'error' then
+						local rest = r:whatsLeft()
 						if eval then
 							error(rest)
 						end
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'warning' then
+						local rest = r:whatsLeft()
 						if eval then
 							print('warning: '..rest)
 						end
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'include' then
+						local rest = r:whatsLeft()
 						lines:remove(i)
 						if eval then
 							-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
 							-- TODO there are some lines that are #include MACRO ... but if it's within a string then no, dont replace macros.
-							rest = self:replaceMacros(rest, nil, true, true)
+							--rest = self:replaceMacros(rest, nil, true, true)
 
 							local sys = true
 							local fn = rest:match'^<(.*)>$'
@@ -1684,10 +1340,11 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 						end
 						i = i - 1
 					elseif cmd == 'include_next' then
+						local rest = r:whatsLeft()
 						lines:remove(i)
 						if eval then
 							-- ok so should I be replacing macros before handling *all* preprocessor directives? I really hope not.
-							rest = self:replaceMacros(rest, nil, true, true)
+							--rest = self:replaceMacros(rest, nil, true, true)
 
 							-- same as include .. except use the *next* search path for this file
 							local sys = true
@@ -1701,19 +1358,19 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 							end
 
 							local search = fn
---DEBUG: print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
+--DEBUG:print('include_next search fn='..tostring(fn)..' sys='..tostring(sys))
 							-- search through the include stack for the most recent file with the name of what we're looking for ...
 							local foundPrevIncludeDir
 							for i=#self.includeStack,1,-1 do
 								local includeNextFile = self.includeStack[i]
 								local dir, prevfn = path(includeNextFile):getdir()
---DEBUG: print(includeNextFile, dir, prevfn)
+--DEBUG:print(includeNextFile, dir, prevfn)
 								if prevfn.path == fn then
 									foundPrevIncludeDir = dir.path
 									break
 								end
 							end
---DEBUG: print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
+--DEBUG:print('foundPrevIncludeDir '..tostring(foundPrevIncludeDir))
 							-- and if we didn't find it, just use nil, and searchForInclude will do a regular search and get the first option
 							fn = self:searchForInclude(fn, sys, foundPrevIncludeDir)
 
@@ -1730,7 +1387,7 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 								error("couldn't find include file "..search..'\n')
 							end
 							if not self.alreadyIncludedFiles[fn] then
---DEBUG: print('include_next '..fn)
+--DEBUG:print('include_next '..fn)
 								lines:insert(i, '/* '..('+'):rep(#self.includeStack+1)..' END   '..fn..' */')
 								-- at position i, insert the file
 								local newcode = assert(path(fn):read(), "couldn't find file "..fn)
@@ -1750,6 +1407,7 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 						i = i - 1
 
 					elseif cmd == 'pragma' then
+						local rest = r:whatsLeft()
 						if eval then
 							if rest == 'once' then
 								-- if we #pragma once on a non-included file then nobody cares
@@ -1778,65 +1436,8 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 						lines:remove(i)
 						i = i - 1
 					else
--- [=[ or should I just store lines for now, eval later (so that macro arguments can span multiple lines)
--- no ... because macros have state via #define and #undef, so you must evaluate them now
--- but then how does C handle
--- 	#define M(a,b,c)
---	M(a
---  #undef M
---		, b, c)
-
-						local prevIncompleteMacroLine = self.foundIncompleteMacroLine
-						self.foundIncompleteMacroLine = nil
-						local origl = l
-						if prevIncompleteMacroLine then
---DEBUG: print('/* ### PREPENDING ### ' .. prevIncompleteMacroLine .. ' ### TO ### ' .. l..' */')
-							--[[ keep?
-							lines[i-1] = '// '..lines[i-1]
-							--]]
-							-- [[ remove
-							lines:remove(i-1)
-							i = i - 1
-							--]]
-
-							--[[ if you want debug output in the file ...
-							lines:insert(i, '/* ### PREPENDING ### '
-								..prevIncompleteMacroLine:gsub('/%*', '/ *'):gsub('%*/', '* /')
-								.. ' ### TO ### '
-								..l:gsub('/%*', '/ *'):gsub('%*/', '* /')
-								..' */')
-							i = i + 1
-							--]]
-
-							l = prevIncompleteMacroLine .. ' ' .. l
-							-- try to replace the macros ...
-							local nl = self:replaceMacros(l)
-							-- if replace didn't work and we're still in the middle of a macro then use the un-replaced version ...
-							if self.foundIncompleteMacroLine then
-								self.foundIncompleteMacroLine = l
-								-- [[ keep?
-								lines[i] = '// '..l
-								--]]
-								--[[ empty?
-								-- neither keep nor empty seems to matter since the next pass it gets removed anyways
-								lines[i] = ''
-								--]]
-								--[[ remove?
-								-- this will break since the next pass removes it ...
-								lines:remove(i)
-								i = i - 1
-								--]]
-							else
-								-- otherwise use it
-								lines[i] = nl
-							end
-						else
-							local nl = self:replaceMacros(l)
-							if nl ~= l then
-								lines[i] = nl
-							end
-						end
---]=]
+						-- plain ol' line ...
+						--error('here with '..tolua(l))
 					end
 				end
 			end
@@ -1876,17 +1477,6 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 	lines = lines:filter(function(l)
 		return l ~= ''
 	end)
-
-	-- merge all into one string
-	-- then replace all on the whole string
-	-- TODO should I worry about #include injection of code and macro args order of evaluation
-	--[[
-	io.stderr:write('begin replacing ', self.includeStack:last() or 'nil', '\n')
-	io.stderr:flush()
-	lines = string.split(self:replaceMacros(lines:concat'\n'), '\n')
-	io.stderr:write'done replacing\n'
-	io.stderr:flush()
-	--]]
 
 	-- [[ join lines that don't end in a semicolon or comment
 	if self.joinNonSemicolonLines then

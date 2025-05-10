@@ -1146,7 +1146,7 @@ function Preproc:__call(args)
 							-- but if there's no space then it is a function-macro
 							local par = r:canbe'('
 							if par
-							and self.stack[-2].space == ''
+							and r.stack[-2].space == ''
 							then
 								-- params
 								local params = table()

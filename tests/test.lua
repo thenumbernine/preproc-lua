@@ -2,6 +2,7 @@
 local assert = require 'ext.assert'
 
 local Preproc = require 'preproc'
+--local Preproc = require 'preproc.preproc-old'
 local p = Preproc()
 
 local results = p[[
@@ -22,4 +23,9 @@ assert.eq(p.macros.X, '1')
 p[[
 #define Y
 ]]
-print(p.macros.Y)
+assert.eq(p.macros.Y, '')
+
+-- param macros?
+p[[
+#define Z(a,b,c) a + b * c
+]]

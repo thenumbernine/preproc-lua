@@ -460,6 +460,10 @@ function Reader:removeStack(loc)
 	return self:replaceStack(loc, loc)
 end
 
+function Reader:insertStack(loc, ...)
+	return self:replaceStack(loc, loc-1, ...)
+end
+
 local function cliteralintegertonumber(x)
 	-- ok Lua tonumber hack ...
 	-- tonumber'0x10' converts from base 16 ..
@@ -604,39 +608,13 @@ end
 -- try to evaluate the token at the top
 -- like level13, but unlike it this doesn't fail if it can't evaluate it
 function Preproc:tryToEval(r)
-	if r:canbetype'number' then
-		local prev = r.stack[-2].token
-
--- stack is {prev, next}
-
-		-- remove L/U suffix:
-		local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
-
-		-- put it back
-		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
-		r:replaceStack(-2, -2, tostring(val))
-
-	elseif r:canbe'(' then
-		local node = self:level1(r)
-		r:mustbe')'
--- stack is {'(', prev, ')', next}
-		r:removeStack(-4)
-		r:removeStack(-2)
--- stack is {prev, next}
-	elseif r:canbe'defined' then
-		local par = r:canbe'('
--- stack is {'(', next}
-		r:removeStack(-2)
--- stack is {next}
-		r:mustbetype'name'
-		if par then
-			r:mustbe')'
--- stack is {name, ')', next}
-			r:removeStack(-2)
-		end
--- stack is {name, next}
-		r:replaceStack(-2, -2, tostring(castnumber(self.macros[name])))
-	elseif r:canbe'_Pragma' then
+--DEBUG:print('Preproc:tryToEval', tolua(r.stack[-1]))
+local top = #r.stack	
+local rest = r:whatsLeft()	
+	if r:canbe'_Pragma' then
+-- { ..., "_Pragma", next)
+assert.eq(r.stack[-2].token, '_Pragma')
+--DEBUG:print'...handling _Pragma'		
 		-- here we want to eliminate the contents of the ()
 		-- so just reset the data and remove the %b()
 		local rest = string.trim(r:whatsLeft())
@@ -649,8 +627,17 @@ assert(par)
 	or r:canbe'__has_include_next'
 	then
 		local prev = r.stack[-2].token
+--DEBUG:print('...handling '..prev)
+assert(prev == '__has_include' or prev == '__has_include_next')
+-- stack: {..., prev, next}		
+		assert.eq(r:removeStack(-2).token, prev)
+-- stack: {..., next}		
 
 		r:mustbe'('
+-- stack: {..., "(", next}		
+		assert.eq(r:removeStack(-2).token, '(')
+-- stack: {..., next}
+
 		local rest = string.trim(r:whatsLeft())
 
 		local fn, sys
@@ -679,52 +666,106 @@ assert(par)
 			repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
 		end
 
+		r:removeStack(-1)
+-- stack: {...}
 		r:setData(rest)		-- set new data, pushes next token on the stack
-		r:replaceStack(-2, repl)	-- replace the former-topmost stack with true or false
+-- stack: {..., next}
+		r:insertStack(-2, repl)
+-- stack: {..., repl, next}
 
 		r:mustbe')'
-		r:removeStack(-2)
+-- stack: {..., repl, ")", next}		
+		assert.eq(r:removeStack(-2).token, '(')
+-- stack: {..., repl, next}
 
 	elseif r:canbetype'name' then
-		local k = r.stack[-2].token
+-- stack: {..., name, next}		
+		local k = r:removeStack(-2).token
+-- stack: {..., next}
 		local v = self.macros[k]
-
+--DEBUG:print('...handling named macro: '..tolua(k)..' = '..tolua(v))
 
 		if type(v) == 'string' then
 			-- then we need to wedge our string into the to-be-parsed content ...
 			-- throw out the old altogether?
-			r:setData(v..r:whatsLeft())
-			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+			local rest = r:whatsLeft()
+			r:removeStack(-1)
+-- stack: {...}
+			r:setData(v..rest)
+-- stack: {..., next}
 
 			self:level1(r)	-- when inserting macros, what level do I start at?
+-- stack: {..., result, next}
 
 		elseif type(v) == 'table' then
 			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
 			-- otherwise I can just () balance regex and then insert it all into the current reader
-			local whatsLeft = r:whatsLeft()
-
-			whatsLeft = handleMacroArgs(whatsLeft, v.def)
+			local rest = r:whatsLeft()
+			rest = handleMacroArgs(rest, v.def)
+			r:removeStack(-1)
+-- stack: {...}
 
 			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-			r:setData(whatsLeft)
-			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+			r:setData(rest)
+-- stack: {..., next}
 
 			self:level1(r)	-- when inserting macros, what level do I start at?
+-- stack: {..., result, next}
 
 		elseif type(v) == 'nil' then
 			-- any unknown/remaining macro variable is going to evaluate to 0
-			r:replaceStack(-2, -2, '0')
+			r:insertStack(-2, '0')
+-- stack: {..., "0", next}		
 		end
 	else
+--DEBUG:print("...couldn't handle "..tolua(rest))
+--DEBUG:print("The stack better not have changed.")
+assert.len(r.stack, top)
 		return false
 	end
+--DEBUG:print("...handled, so the stack better be +1")
+assert.len(r.stack, top+1)
 	return true
 end
 
 function Preproc:level13(r)
 local top = #r.stack
 local rest = r:whatsLeft()
-	if not self:tryToEval(r) then
+	
+	if self:tryToEval(r) then
+		-- handled
+	elseif r:canbetype'number' then
+		local prev = r.stack[-2].token
+
+-- stack is {prev, next}
+
+		-- remove L/U suffix:
+		local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
+
+		-- put it back
+		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
+		r:replaceStack(-2, -2, tostring(val))
+	elseif r:canbe'(' then
+		local node = self:level1(r)
+		r:mustbe')'
+-- stack is {'(', prev, ')', next}
+		r:removeStack(-4)
+		r:removeStack(-2)
+-- stack is {prev, next}
+	elseif r:canbe'defined' then
+		local par = r:canbe'('
+-- stack is {'(', next}
+		r:removeStack(-2)
+-- stack is {next}
+		r:mustbetype'name'
+		if par then
+			r:mustbe')'
+-- stack is {name, ')', next}
+			r:removeStack(-2)
+		end
+-- stack is {name, next}
+		r:replaceStack(-2, -2, tostring(castnumber(self.macros[name])))
+	else
 		error("failed to parse expression: "..rest)
 	end
 assert.len(r.stack, top+1)

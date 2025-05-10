@@ -437,6 +437,8 @@ assert.type(token, 'string')
 	end
 	--]]
 	-- [[ works but extra space
+assert.ge(loc, 1)
+assert.le(loc, #self.stack+1)
 	self.stack[loc] = {token=token, type='name', space=' '}
 	--]]
 end
@@ -451,6 +453,8 @@ function Reader:replaceStack(startPos, endPos, ...)
 	-- insert left to right, in order (not reversed), so that each token can see its predecessor in the stack
 	for i=1,select('#',...) do
 		local insloc = startPos+i-1
+assert.ge(insloc, 1)
+assert.le(insloc, #self.stack+1)
 		self.stack:insert(insloc, makeTokenEntry(select(i, ...), self.stack[insloc-1]))
 	end
 	return removed:unpack()
@@ -464,7 +468,12 @@ function Reader:insertStack(loc, ...)
 	return self:replaceStack(loc, loc-1, ...)
 end
 
-local function cliteralintegertonumber(x)
+function Reader:stackToString()
+--DEBUG:print('Reader:stackToString stack='..tolua(self.stack))
+	return self.stack:mapi(function(entry) return entry.space..entry.token end):concat()
+end
+
+local function cLiteralIntegerToNumber(x)
 	-- ok Lua tonumber hack ...
 	-- tonumber'0x10' converts from base 16 ..
 	-- tonumber'010' converts from base 10 *NOT* base 8 ...
@@ -485,7 +494,7 @@ local function castnumber(x)
 	if x == nil then return 0 end
 	if x == false then return 0 end
 	if x == true then return 1 end
-	local n = cliteralintegertonumber(x)
+	local n = cLiteralIntegerToNumber(x)
 	if not n then error("couldn't cast to number: "..x) end
 	return n
 end
@@ -494,7 +503,7 @@ end
 function Preproc:evalAST(t)
 	if t[1] == 'number' then
 		assert.len(t, 2)
-		return assert(cliteralintegertonumber(t[2]), "failed to parse number "..tostring(t[2]))
+		return assert(cLiteralIntegerToNumber(t[2]), "failed to parse number "..tostring(t[2]))
 	elseif t[1] == '!' then
 		assert.len(t, 2)
 		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
@@ -609,12 +618,12 @@ end
 -- like level13, but unlike it this doesn't fail if it can't evaluate it
 function Preproc:tryToEval(r)
 --DEBUG:print('Preproc:tryToEval', tolua(r.stack[-1]))
-local top = #r.stack	
-local rest = r:whatsLeft()	
+local top = #r.stack
+local rest = r:whatsLeft()
 	if r:canbe'_Pragma' then
 -- { ..., "_Pragma", next)
 assert.eq(r.stack[-2].token, '_Pragma')
---DEBUG:print'...handling _Pragma'		
+--DEBUG:print'...handling _Pragma'
 		-- here we want to eliminate the contents of the ()
 		-- so just reset the data and remove the %b()
 		local rest = string.trim(r:whatsLeft())
@@ -629,12 +638,12 @@ assert(par)
 		local prev = r.stack[-2].token
 --DEBUG:print('...handling '..prev)
 assert(prev == '__has_include' or prev == '__has_include_next')
--- stack: {..., prev, next}		
+-- stack: {..., prev, next}
 		assert.eq(r:removeStack(-2).token, prev)
--- stack: {..., next}		
+-- stack: {..., next}
 
 		r:mustbe'('
--- stack: {..., "(", next}		
+-- stack: {..., "(", next}
 		assert.eq(r:removeStack(-2).token, '(')
 -- stack: {..., next}
 
@@ -670,22 +679,23 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 -- stack: {...}
 		r:setData(rest)		-- set new data, pushes next token on the stack
 -- stack: {..., next}
-		r:insertStack(-2, repl)
+		r:insertStack(-1, repl)
 -- stack: {..., repl, next}
 
 		r:mustbe')'
--- stack: {..., repl, ")", next}		
+-- stack: {..., repl, ")", next}
 		assert.eq(r:removeStack(-2).token, '(')
 -- stack: {..., repl, next}
 
 	elseif r:canbetype'name' then
--- stack: {..., name, next}		
-		local k = r:removeStack(-2).token
--- stack: {..., next}
+-- stack: {..., name, next}
+		local k = r.stack[-2].token
 		local v = self.macros[k]
 --DEBUG:print('...handling named macro: '..tolua(k)..' = '..tolua(v))
 
 		if type(v) == 'string' then
+			assert.eq(r:removeStack(-2).token, k)
+-- stack: {..., next}
 			-- then we need to wedge our string into the to-be-parsed content ...
 			-- throw out the old altogether?
 			local rest = r:whatsLeft()
@@ -698,6 +708,8 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 -- stack: {..., result, next}
 
 		elseif type(v) == 'table' then
+			assert.eq(r:removeStack(-2).token, k)
+-- stack: {..., next}
 			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
 			-- otherwise I can just () balance regex and then insert it all into the current reader
 			local rest = r:whatsLeft()
@@ -714,8 +726,15 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 
 		elseif type(v) == 'nil' then
 			-- any unknown/remaining macro variable is going to evaluate to 0
-			r:insertStack(-2, '0')
--- stack: {..., "0", next}		
+
+			if self.evalLeaveNames then
+				-- if we're not in a macro-eval then leave it as is
+-- stack: {..., name, next}
+			else
+				-- if we're in a macro-eval then replace with a 0
+				r:replaceStack(-2, -2, '0')
+-- stack: {..., "0", next}
+			end
 		end
 	else
 --DEBUG:print("...couldn't handle "..tolua(rest))
@@ -731,7 +750,7 @@ end
 function Preproc:level13(r)
 local top = #r.stack
 local rest = r:whatsLeft()
-	
+
 	if self:tryToEval(r) then
 		-- handled
 	elseif r:canbetype'number' then
@@ -740,7 +759,7 @@ local rest = r:whatsLeft()
 -- stack is {prev, next}
 
 		-- remove L/U suffix:
-		local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
+		local val = assert(cLiteralIntegerToNumber(prev), "expected number")	-- decimal number
 
 		-- put it back
 		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
@@ -1015,7 +1034,7 @@ assert.eq(r.stack[-3].token, '||')
 assert.len(r.stack, top+1)
 end
 
-function Preproc:level1(r)	-- defined at the top 
+function Preproc:level1(r)	-- defined at the top
 local top = #r.stack
 	self:level2(r)
 	if r:canbe'?' then
@@ -1491,15 +1510,19 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 --DEBUG:print('#r.stack', #r.stack)
 --DEBUG:print('normal line handling token', tolua(r.stack[-1]))
 -- {..., last token consumed that isn't done, next}
-						
+
 							-- see if we can expand it to a token ...
+							self.evalLeaveNames = true	-- TODO or just pass a flag through the 'eval' levels
 							self:tryToEval(r)
+							self.evalLeaveNames = nil
 
 							-- try to expand stack[-1]
 							-- i.e. try to apply level13 of the expr evaluator
 							r:next()
 						end
 
+						-- TODO only replace line if we ever replaced a macro?
+						lines[i] = r:stackToString()
 					end
 				end
 			end

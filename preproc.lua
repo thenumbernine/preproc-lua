@@ -601,10 +601,9 @@ function Preproc:evalAST(t)
 	end
 end
 
-local level1
-
-local function level13(r)
-local top = #r.stack
+-- try to evaluate the token at the top
+-- like level13, but unlike it this doesn't fail if it can't evaluate it
+function Preproc:tryToEval(r)
 	if r:canbetype'number' then
 		local prev = r.stack[-2].token
 
@@ -615,14 +614,10 @@ local top = #r.stack
 
 		-- put it back
 		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
-		r:replaceStack(-2, -2, {
-			token = tostring(val),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-2, -2, tostring(val))
 
 	elseif r:canbe'(' then
-		local node = level1(r)
+		local node = self:level1(r)
 		r:mustbe')'
 -- stack is {'(', prev, ')', next}
 		r:removeStack(-4)
@@ -640,11 +635,7 @@ local top = #r.stack
 			r:removeStack(-2)
 		end
 -- stack is {name, next}
-		r:replaceStack(-2, -2, {
-			token = tostring(castnumber(self.macros[name])),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-2, -2, tostring(castnumber(self.macros[name])))
 	elseif r:canbe'_Pragma' then
 		-- here we want to eliminate the contents of the ()
 		-- so just reset the data and remove the %b()
@@ -705,7 +696,7 @@ assert(par)
 			r:setData(v..r:whatsLeft())
 			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
 
-			level1(r)	-- when inserting macros, what level do I start at?
+			self:level1(r)	-- when inserting macros, what level do I start at?
 
 		elseif type(v) == 'table' then
 			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
@@ -718,19 +709,28 @@ assert(par)
 			r:setData(whatsLeft)
 			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
 
-			level1(r)	-- when inserting macros, what level do I start at?
+			self:level1(r)	-- when inserting macros, what level do I start at?
 
 		elseif type(v) == 'nil' then
 			-- any unknown/remaining macro variable is going to evaluate to 0
-			r:replaceStack(-2, -2, {token='0', type='number', space=' '})
+			r:replaceStack(-2, -2, '0')
 		end
 	else
-		error("failed to parse expression: "..cur)
+		return false
+	end
+	return true
+end
+
+function Preproc:level13(r)
+local top = #r.stack
+local rest = r:whatsLeft()
+	if not self:tryToEval(r) then
+		error("failed to parse expression: "..rest)
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level12(r)
+function Preproc:level12(r)
 local top = #r.stack
 	if r:canbe'+'
 	or r:canbe'-'
@@ -738,7 +738,7 @@ local top = #r.stack
 	or r:canbe'~'
 	-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
 	then
-		level13(r)
+		self:level13(r)
 		local op = r.stack[-3].token
 -- stack is {'+'|'-'|'!'|'~', a, next}
 assert.ge(#r.stack, 3)
@@ -757,22 +757,18 @@ assert(op == '+' or op == '-' or op == '!' or op == '~')
 		else
 			error'here'
 		end
-		r:replaceStack(-3, -2, {
-			token = tostring(result),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-3, -2, tostring(result))
 	else
-		level13(r)
+		self:level13(r)
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level11(r)
+function Preproc:level11(r)
 local top = #r.stack
-	level12(r)
+	self:level12(r)
 	if r:canbe'*' or r:canbe'/' or r:canbe'%' then
-		level11(r)
+		self:level11(r)
 		local op = r.stack[-3].token
 -- stack is {a, '*'|'/'|'%', b, next}
 assert.ge(#r.stack, 4)
@@ -789,20 +785,16 @@ assert(op == '*' or op == '/' or op == '%')
 		else
 			error'here'
 		end
-		r:replaceStack(-4, -2, {
-			token = tostring(result),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(result))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level10(r)
+function Preproc:level10(r)
 local top = #r.stack
-	level11(r)
+	self:level11(r)
 	if r:canbe'+' or r:canbe'-' then
-		level10(r)
+		self:level10(r)
 		local op = r.stack[-3].token
 -- stack is {a, '+'|'-', b, next}
 assert.ge(#r.stack, 4)
@@ -817,20 +809,16 @@ assert(op == '+' or op == '-')
 		else
 			error'here'
 		end
-		r:replaceStack(-4, -2, {
-			token = tostring(result),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(result))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level9(r)
+function Preproc:level9(r)
 local top = #r.stack
-	level10(r)
+	self:level10(r)
 	if r:canbe'>>' or r:canbe'<<' then
-		level9(r)
+		self:level9(r)
 		local op = r.stack[-3].token
 -- stack is {a, '>>'|'<<', b, next}
 assert.ge(#r.stack, 4)
@@ -845,24 +833,20 @@ assert(op == '>>' or op == '<<')
 		else
 			error'here'
 		end
-		r:replaceStack(-4, -2, {
-			token = tostring(result),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(result))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level8(r)
+function Preproc:level8(r)
 local top = #r.stack
-	level9(r)
+	self:level9(r)
 	if r:canbe'>='
 	or r:canbe'<='
 	or r:canbe'>'
 	or r:canbe'<'
 	then
-		level8(r)
+		self:level8(r)
 		local op = r.stack[-3].token
 -- stack is {a, '>='|'<='|'>'|'<', b, next}
 assert.ge(#r.stack, 4)
@@ -881,149 +865,129 @@ assert(op == '>=' or op == '<=' or op == '>' or op == '<')
 		else
 			error'here'
 		end
-		r:replaceStack(-4, -2, {
-			token = result,
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, result)
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level7(r)
+function Preproc:level7(r)
 local top = #r.stack
-	level8(r)
+	self:level8(r)
 	if r:canbe'==' or r:canbe'!=' then
-		level7(r)
+		self:level7(r)
 		local op = r.stack[-3].token
 -- stack is {a, '=='|'!=', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '==' or op == '!=')
 		local a = castnumber(r.stack[-4].token)
 		local b = castnumber(r.stack[-2].token)
-		r:replaceStack(-4, -2, {
-			token = tostring(
-				op == '=='
-				and (a == b and '1' or '0')
-				or (a ~= b and '1' or '0')
-			),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(
+			op == '=='
+			and (a == b and '1' or '0')
+			or (a ~= b and '1' or '0')
+		))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level6(r)
+function Preproc:level6(r)
 local top = #r.stack
-	level7(r)
+	self:level7(r)
 	if r:canbe'&' then
-		level6(r)
+		self:level6(r)
 -- stack is {a, '&', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '&')
-		r:replaceStack(-4, -2, {
-			token = tostring(
-				bit.band(
-					castnumber(r.stack[-4].token),
-					castnumber(r.stack[-2].token)
-				)
-			),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(
+			bit.band(
+				castnumber(r.stack[-4].token),
+				castnumber(r.stack[-2].token)
+			)
+		))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level5(r)
+function Preproc:level5(r)
 local top = #r.stack
-	local a = level6(r)
+	local a = self:level6(r)
 	if r:canbe'^' then
-		level5(r)
+		self:level5(r)
 -- stack is {a, '^', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '^')
-		r:replaceStack(-4, -2, {
-			token = tostring(
-				bit.bxor(
-					castnumber(r.stack[-4].token),
-					castnumber(r.stack[-2].token)
-				)
-			),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(
+			bit.bxor(
+				castnumber(r.stack[-4].token),
+				castnumber(r.stack[-2].token)
+			)
+		))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level4(r)
+function Preproc:level4(r)
 local top = #r.stack
-	level5(r)
+	self:level5(r)
 	if r:canbe'|' then
-		level4(r)
+		self:level4(r)
 -- stack is {a, '|', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '|')
-		r:replaceStack(-4, -2, {
-			token = tostring(
-				bit.bor(
-					castnumber(r.stack[-4].token),
-					castnumber(r.stack[-2].token)
-				)
-			),
-			type = 'number',
-			space = ' ',
-		})
+		r:replaceStack(-4, -2, tostring(
+			bit.bor(
+				castnumber(r.stack[-4].token),
+				castnumber(r.stack[-2].token)
+			)
+		))
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level3(r)
+function Preproc:level3(r)
 local top = #r.stack
-	level4(r)
+	self:level4(r)
 	if r:canbe'&&' then
-		level3(r)
+		self:level3(r)
 -- stack should be {a, '&&', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '&&')
 		r:replaceStack(-4, -2, castnumber(r.stack[-4].token) == 0
-			and r.stack[-2]
-			or r.stack[-4])
+			and r.stack[-2].token
+			or r.stack[-4].token)
 	end
 assert.len(r.stack, top+1)
 end
 
-local function level2(r)
+function Preproc:level2(r)
 local top = #r.stack
-	level3(r)
+	self:level3(r)
 	if r:canbe'||' then
-		level2(r)
+		self:level2(r)
 -- stack should be: {a, '||', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '||')
 		r:replaceStack(-4, -2, castnumber(r.stack[-4].token) ~= 0
-			and r.stack[-4]
-			or r.stack[-2])
+			and r.stack[-4].token
+			or r.stack[-2].token)
 	end
 assert.len(r.stack, top+1)
 end
 
-function level1(r)	-- defined at the top 
+function Preproc:level1(r)	-- defined at the top 
 local top = #r.stack
-	level2(r)
+	self:level2(r)
 	if r:canbe'?' then
-		level1(r)
+		self:level1(r)
 		r:mustbe':'
-		level1(r)
+		self:level1(r)
 -- stack stack should be: {a, '?', b, ':', c, next}
 assert.ge(#r.stack, 6)
 assert.eq(r.stack[-5].token, '?')
 assert.eq(r.stack[-3].token, ':')
 		r:replaceStack(-6, -2, castnumber(r.stack[-6].token) ~= 0
-			and r.stack[-4]
-			or r.stack[-2])
+			and r.stack[-4].token
+			or r.stack[-2].token)
 	end
 assert.len(r.stack, top+1)
 end
@@ -1036,7 +1000,7 @@ function Preproc:parseCondInt(r)
 	-- Windows ... smh
 --DEBUG:print('after macros:', r)
 
-	local parse = level1(r)
+	local parse = self:level1(r)
 
 --DEBUG:print('got expression tree', tolua(parse))
 -- stack should be: {'#', 'if'/'elif', cond, next}
@@ -1486,6 +1450,10 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 --DEBUG:print('#r.stack', #r.stack)
 --DEBUG:print('normal line handling token', tolua(r.stack[-1]))
 -- {..., last token consumed that isn't done, next}
+						
+							-- see if we can expand it to a token ...
+							self:tryToEval(r)
+
 							-- try to expand stack[-1]
 							-- i.e. try to apply level13 of the expr evaluator
 							r:next()

@@ -317,14 +317,18 @@ end
 function Reader:resetData(data)
 	self.stack = setmetatable({}, {
 		__index = function(t,k)
-			if type(k) == 'number' and k < 0 then k = k + #self + 1 end
-			local v = rawget(self, k)
+			if type(k) == 'number' and k < 0 then
+				k = k + #t + 1
+			end
+			local v = rawget(t, k)
 			if v == nil then v = table[k] end
 			return v
 		end,
 		__newindex = function(t,k,v)
-			if type(k) == 'number' and k < 0 then k = k + #self + 1 end
-			rawset(self, k, v)
+			if type(k) == 'number' and k < 0 then
+				k = k + #t + 1
+			end
+			rawset(t, k, v)
 		end,
 	})
 	-- each entry holds .token, .type, .space
@@ -438,8 +442,9 @@ assert.type(token, 'string')
 end
 
 function Reader:replaceStack(startPos, endPos, ...)
-	if startPos < 0 then startPos = startPos + 1 + #r.stack end
-	if endPos < 0 then endPos = endPos + 1 + #r.stack end
+	if startPos < 0 then startPos = startPos + 1 + #self.stack end
+	if endPos < 0 then endPos = endPos + 1 + #self.stack end
+	local removed = self.stack:sub(startPos, endPos)
 	for i=startPos,endPos do
 		assert(self.stack:remove(startPos))
 	end
@@ -448,10 +453,11 @@ function Reader:replaceStack(startPos, endPos, ...)
 		local insloc = startPos+i-1
 		self.stack:insert(insloc, makeTokenEntry(select(i, ...), self.stack[insloc-1]))
 	end
+	return removed:unpack()
 end
 
 function Reader:removeStack(loc)
-	self:replaceStack(loc, loc)
+	return self:replaceStack(loc, loc)
 end
 
 local function cliteralintegertonumber(x)
@@ -613,7 +619,7 @@ local top = #r.stack
 		if r:canbetype'number' then
 			local prev = r.stack[-2].token
 
--- stack is {prev, nextqueued}
+-- stack is {prev, next}
 
 			-- remove L/U suffix:
 			local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
@@ -629,22 +635,22 @@ local top = #r.stack
 		elseif r:canbe'(' then
 			local node = level1()
 			r:mustbe')'
--- stack is {'(', prev, ')', nextqueued}
+-- stack is {'(', prev, ')', next}
 			r:removeStack(-4)
 			r:removeStack(-2)
--- stack is {prev, nextqueued}
+-- stack is {prev, next}
 		elseif r:canbe'defined' then
 			local par = r:canbe'('
--- stack is {'(', nextqueued}
+-- stack is {'(', next}
 			r:removeStack(-2)
--- stack is {nextqueued}
+-- stack is {next}
 			r:mustbetype'name'
 			if par then
 				r:mustbe')'
--- stack is {name, ')', nextqueued}
+-- stack is {name, ')', next}
 				r:removeStack(-2)
 			end
--- stack is {name, nextqueued}
+-- stack is {name, next}
 			r.stack[-2] = {
 				token = tostring(castnumber(self.macros[name])),
 				type = 'number',
@@ -745,7 +751,7 @@ local top = #r.stack
 		then
 			level13()
 			local op = r.stack[-3].token
--- stack is {'+'|'-'|'!'|'~', a, nextqueued}
+-- stack is {'+'|'-'|'!'|'~', a, next}
 assert.ge(#r.stack, 3)
 assert(op == '+' or op == '-' or op == '!' or op == '~')
 
@@ -779,7 +785,7 @@ local top = #r.stack
 		if r:canbe'*' or r:canbe'/' or r:canbe'%' then
 			level11()
 			local op = r.stack[-3].token
--- stack is {a, '*'|'/'|'%', b, nextqueued}
+-- stack is {a, '*'|'/'|'%', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '*' or op == '/' or op == '%')
 			local a = castnumber(r.stack[-4].token)
@@ -809,7 +815,7 @@ local top = #r.stack
 		if r:canbe'+' or r:canbe'-' then
 			level10()
 			local op = r.stack[-3].token
--- stack is {a, '+'|'-', b, nextqueued}
+-- stack is {a, '+'|'-', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '+' or op == '-')
 			local a = castnumber(r.stack[-4].token)
@@ -837,7 +843,7 @@ local top = #r.stack
 		if r:canbe'>>' or r:canbe'<<' then
 			level9()
 			local op = r.stack[-3].token
--- stack is {a, '>>'|'<<', b, nextqueued}
+-- stack is {a, '>>'|'<<', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '>>' or op == '<<')
 			local a = castnumber(r.stack[-4].token)
@@ -869,7 +875,7 @@ local top = #r.stack
 		then
 			level8()
 			local op = r.stack[-3].token
--- stack is {a, '>='|'<='|'>'|'<', b, nextqueued}
+-- stack is {a, '>='|'<='|'>'|'<', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '>=' or op == '<=' or op == '>' or op == '<')
 			local a = castnumber(r.stack[-4].token)
@@ -901,7 +907,7 @@ local top = #r.stack
 		if r:canbe'==' or r:canbe'!=' then
 			level7()
 			local op = r.stack[-3].token
--- stack is {a, '=='|'!=', b, nextqueued}
+-- stack is {a, '=='|'!=', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '==' or op == '!=')
 			local a = castnumber(r.stack[-4].token)
@@ -924,7 +930,7 @@ local top = #r.stack
 		level7()
 		if r:canbe'&' then
 			level6()
--- stack is {a, '&', b, nextqueued}
+-- stack is {a, '&', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '&')
 			r:replaceStack(-4, -2, {
@@ -946,7 +952,7 @@ local top = #r.stack
 		local a = level6()
 		if r:canbe'^' then
 			level5()
--- stack is {a, '^', b, nextqueued}
+-- stack is {a, '^', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '^')
 			r:replaceStack(-4, -2, {
@@ -968,7 +974,7 @@ local top = #r.stack
 		level5()
 		if r:canbe'|' then
 			level4()
--- stack is {a, '|', b, nextqueued}
+-- stack is {a, '|', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '|')
 			r:replaceStack(-4, -2, {
@@ -990,7 +996,7 @@ local top = #r.stack
 		level4()
 		if r:canbe'&&' then
 			level3()
--- stack should be {a, '&&', b, nextqueued}
+-- stack should be {a, '&&', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '&&')
 			r:replaceStack(-4, -2, castnumber(r.stack[-4].token) == 0
@@ -1005,7 +1011,7 @@ local top = #r.stack
 		level3()
 		if r:canbe'||' then
 			level2()
--- stack should be: {a, '||', b, nextqueued}
+-- stack should be: {a, '||', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '||')
 			r:replaceStack(-4, -2, castnumber(r.stack[-4].token) ~= 0
@@ -1022,7 +1028,7 @@ local top = #r.stack
 			level1()
 			r:mustbe':'
 			level1()
--- stack stack should be: {a, '?', b, ':', c, nextqueued}
+-- stack stack should be: {a, '?', b, ':', c, next}
 assert.ge(#r.stack, 6)
 assert.eq(r.stack[-5].token, '?')
 assert.eq(r.stack[-3].token, ':')
@@ -1036,7 +1042,7 @@ assert.len(r.stack, top+1)
 	local parse = level1()
 
 --DEBUG:print('got expression tree', tolua(parse))
--- stack should be: {'#', 'if'/'elif', cond, nextqueued}
+-- stack should be: {'#', 'if'/'elif', cond, next}
 assert.len(#r.stack, 4)
 	r:mustbetype'done'
 	local cond = castnumber(r.stack[-2].token)
@@ -1128,26 +1134,60 @@ function Preproc:__call(args)
 				if l:match'^%s*#' then
 
 					local r = Reader(l)
+-- stack: {next}
+assert.len(r.stack, 1)
 					r:mustbe'#'	-- expected right, unless this line starts with ##
+-- stack: {'#', next}
+assert.len(r.stack, 2)
+					assert.eq(r:removeStack(-2).token, '#')
+-- stack: {next}
+assert.len(r.stack, 1)
 
 					-- another windows irritation ... `#cmd` and `#(cmd)` are both valid
-					local cmdpar = r:canbe'('
+					local par = r:canbe'('
+					if par then
+-- stack: {'(', next}
+						assert.eq(r:removeStack(-2).token, '(')
+					end
+-- stack: {next}
+assert.len(r.stack, 1)
 					local cmd = r:mustbetype'name'
-					if cmdpar then r:mustbe')' end
+-- stack: {cmd, next}
+					assert.eq(r:removeStack(-2).token, cmd)
+-- stack: {next}
+assert.len(r.stack, 1)
+					if par then
+						r:mustbe')'
+						assert.eq(r:removeStack(-2).token, ')')
+					end
+-- stack: {next}
+assert.len(r.stack, 1)
 --DEBUG:print('got cmd '..tolua(cmd)..', after cmd is '..tolua(r:whatsLeft()))
-
 					if cmd == 'define' then
 --DEBUG:print'handling "define"'
+-- stack: {next}
+assert.len(r.stack, 1)
 						if eval then
 							local k = r:mustbetype'name'
 --DEBUG:print('got name='..tolua(k))
+-- stack: {name, next}
+assert.len(r.stack, 2)
+							assert.eq(r:removeStack(-2).token, k)
+-- stack: {next}
+assert.len(r.stack, 1)
 							-- and now spaces matter ...
 							-- if the next parenthesis is space-separated then this is just a replacement-macro
 							-- but if there's no space then it is a function-macro
 							local par = r:canbe'('
+if par then
+	assert.len(r.stack, 2)
+	assert.eq(r.stack[1], r.stack[-2])
+	assert.eq(r.stack[2], r.stack[-1])
+end
 							if par
 							and r.stack[-2].space == ''
 							then
+-- stack: {'(', next}
 								-- params
 								local params = table()
 								local first = true
@@ -1158,15 +1198,17 @@ function Preproc:__call(args)
 									first = false
 									params:insert(r:canbe'...' or r:mustbetype'name')
 								end
+-- stack: {'(', ..., ')', next}
 								local paramdef = r:whatsLeft()
---DEBUG:print('defining with params',params,paramdef)
+--DEBUG:print('defining macro '..tolua(k)..' with params='..tolua(params)..', def='..tolua(paramdef))
 								-- by default returns '' to replace the line with empty
 								lines[i] = self:getDefineCode(k, {
 									params = params,
 									def = paramdef,	-- This is rest of the line to be parsed:
 								}, l)
 							else
---DEBUG:print('defining value',k,v)
+
+--DEBUG:print('defining macro '..tolua(k)..' with value='..tolua(v))
 								local v = (par and '(' or '')..r:whatsLeft()
 								v = string.trim(v)
 								-- replace
@@ -1437,7 +1479,20 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 						i = i - 1
 					else
 						-- plain ol' line ...
-						--error('here with '..tolua(l))
+--DEBUG:print('got non-macro line: '..tolua(l))
+
+						-- tokenize it and search through it
+						-- and replace any macros you find
+						local r = Reader(l)
+
+						while not r:canbetype'done' do
+-- {..., last token consumed that isn't done, next}
+							-- try to expand stack[-2]
+							-- i.e. try to apply level13 of the expr evaluator
+							r:next()
+						end
+
+
 					end
 				end
 			end
@@ -1480,7 +1535,7 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 
 	-- [[ join lines that don't end in a semicolon or comment
 	if self.joinNonSemicolonLines then
-		for i=#lines,1,-1 do
+		for i=#lines-1,1,-1 do
 			if lines[i]:sub(-2) ~= '*/' then
 				lines[i] = lines[i]:gsub('%s+', ' ')
 				if lines[i]:sub(-1) ~= ';'

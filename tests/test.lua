@@ -19,6 +19,7 @@ printf("one two\n");]])
 -- did it store the macro?
 assert.eq(p.macros.X, '1')
 
+-- does the macro expand?
 local result = p[[X]]
 assert.eq(result, '1')
 

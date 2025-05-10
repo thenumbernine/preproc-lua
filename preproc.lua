@@ -341,15 +341,15 @@ function Reader:setData(data)
 end
 
 function Reader:next()
---DEBUG:print'Reader:next()'
+--DEBUG(Reader:next):print'Reader:next()'
 	if self.index > #self.data then
 		if #self.stack == 0
 		or self.stack:last().type ~= 'done'
 		then
---DEBUG:print'...inserting type=done'
+--DEBUG(Reader:next):print'...inserting type=done'
 			self.stack:insert{token='', type='done', space=''}
 		end
---DEBUG:print'...done'
+--DEBUG(Reader:next):print'...done'
 		return '', 'done', ''
 	end
 
@@ -363,7 +363,7 @@ if not ti1 then error("failed to match at "..self.data:sub(self.index, self.inde
 	local token = self.data:sub(ti1, ti2)
 	self.index = ti2 + 1
 	self.stack:insert{token=token, type=tokentype, space=space}
---DEBUG:print('...next got', tolua{token=token, type=tokentype, space=space})
+--DEBUG(Reader:next):print('...next got', tolua{token=token, type=tokentype, space=space})
 	return token, tokentype, space
 end
 
@@ -601,6 +601,432 @@ function Preproc:evalAST(t)
 	end
 end
 
+local level1
+
+local function level13(r)
+local top = #r.stack
+	if r:canbetype'number' then
+		local prev = r.stack[-2].token
+
+-- stack is {prev, next}
+
+		-- remove L/U suffix:
+		local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
+
+		-- put it back
+		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
+		r:replaceStack(-2, -2, {
+			token = tostring(val),
+			type = 'number',
+			space = ' ',
+		})
+
+	elseif r:canbe'(' then
+		local node = level1(r)
+		r:mustbe')'
+-- stack is {'(', prev, ')', next}
+		r:removeStack(-4)
+		r:removeStack(-2)
+-- stack is {prev, next}
+	elseif r:canbe'defined' then
+		local par = r:canbe'('
+-- stack is {'(', next}
+		r:removeStack(-2)
+-- stack is {next}
+		r:mustbetype'name'
+		if par then
+			r:mustbe')'
+-- stack is {name, ')', next}
+			r:removeStack(-2)
+		end
+-- stack is {name, next}
+		r:replaceStack(-2, -2, {
+			token = tostring(castnumber(self.macros[name])),
+			type = 'number',
+			space = ' ',
+		})
+	elseif r:canbe'_Pragma' then
+		-- here we want to eliminate the contents of the ()
+		-- so just reset the data and remove the %b()
+		local rest = string.trim(r:whatsLeft())
+		local par, rest = rest:match'^(%b())%s*(.*)$'
+assert(par)
+		r:setData(rest)
+		r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+
+	elseif r:canbe'__has_include'
+	or r:canbe'__has_include_next'
+	then
+		local prev = r.stack[-2].token
+
+		r:mustbe'('
+		local rest = string.trim(r:whatsLeft())
+
+		local fn, sys
+		if rest:match'^"' then
+			fn, rest = rest:match'^(%b"")%s*(.*)$'
+		elseif rest:match'^<' then
+			fn, rest = rest:match'^(%b<>)%s*(.*)$'
+			sys = true
+		else
+			error('expected <> or ""')
+		end
+
+		local repl
+		if prev == '__has_include' then
+			repl = self:searchForInclude(fn, sys) and '1' or '0'
+		elseif prev == '__has_include_next' then
+			local foundPrevIncludeDir
+			for i=#self.includeStack,1,-1 do
+				local includeNextFile = self.includeStack[i]
+				local dir, prevfn = path(includeNextFile):getdir()
+				if prevfn.path == fn then
+					foundPrevIncludeDir = dir.path
+					break
+				end
+			end
+			repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
+		end
+
+		r:setData(rest)		-- set new data, pushes next token on the stack
+		r:replaceStack(-2, repl)	-- replace the former-topmost stack with true or false
+
+		r:mustbe')'
+		r:removeStack(-2)
+
+	elseif r:canbetype'name' then
+		local k = r.stack[-2].token
+		local v = self.macros[k]
+
+
+		if type(v) == 'string' then
+			-- then we need to wedge our string into the to-be-parsed content ...
+			-- throw out the old altogether?
+			r:setData(v..r:whatsLeft())
+			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+
+			level1(r)	-- when inserting macros, what level do I start at?
+
+		elseif type(v) == 'table' then
+			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
+			-- otherwise I can just () balance regex and then insert it all into the current reader
+			local whatsLeft = r:whatsLeft()
+
+			whatsLeft = handleMacroArgs(whatsLeft, v.def)
+
+			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
+			r:setData(whatsLeft)
+			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+
+			level1(r)	-- when inserting macros, what level do I start at?
+
+		elseif type(v) == 'nil' then
+			-- any unknown/remaining macro variable is going to evaluate to 0
+			r:replaceStack(-2, -2, {token='0', type='number', space=' '})
+		end
+	else
+		error("failed to parse expression: "..cur)
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level12(r)
+local top = #r.stack
+	if r:canbe'+'
+	or r:canbe'-'
+	or r:canbe'!'
+	or r:canbe'~'
+	-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
+	then
+		level13(r)
+		local op = r.stack[-3].token
+-- stack is {'+'|'-'|'!'|'~', a, next}
+assert.ge(#r.stack, 3)
+assert(op == '+' or op == '-' or op == '!' or op == '~')
+
+		local a = castnumber(r.stack[-2].token)
+		local result
+		if op == '+' then
+			result = a
+		elseif op == '-' then
+			result = -a
+		elseif op == '!' then
+			result = a == 0 and 1 or 0
+		elseif op == '~' then
+			result = bit.bnot(a)
+		else
+			error'here'
+		end
+		r:replaceStack(-3, -2, {
+			token = tostring(result),
+			type = 'number',
+			space = ' ',
+		})
+	else
+		level13(r)
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level11(r)
+local top = #r.stack
+	level12(r)
+	if r:canbe'*' or r:canbe'/' or r:canbe'%' then
+		level11(r)
+		local op = r.stack[-3].token
+-- stack is {a, '*'|'/'|'%', b, next}
+assert.ge(#r.stack, 4)
+assert(op == '*' or op == '/' or op == '%')
+		local a = castnumber(r.stack[-4].token)
+		local b = castnumber(r.stack[-2].token)
+		local result
+		if op == '*' then
+			result = a * b
+		elseif op == '/' then
+			result = a / b		-- always integer division?
+		elseif op == '%' then
+			result = a % b
+		else
+			error'here'
+		end
+		r:replaceStack(-4, -2, {
+			token = tostring(result),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level10(r)
+local top = #r.stack
+	level11(r)
+	if r:canbe'+' or r:canbe'-' then
+		level10(r)
+		local op = r.stack[-3].token
+-- stack is {a, '+'|'-', b, next}
+assert.ge(#r.stack, 4)
+assert(op == '+' or op == '-')
+		local a = castnumber(r.stack[-4].token)
+		local b = castnumber(r.stack[-2].token)
+		local result
+		if op == '+' then
+			result = a + b
+		elseif op == '-' then
+			result = a - b
+		else
+			error'here'
+		end
+		r:replaceStack(-4, -2, {
+			token = tostring(result),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level9(r)
+local top = #r.stack
+	level10(r)
+	if r:canbe'>>' or r:canbe'<<' then
+		level9(r)
+		local op = r.stack[-3].token
+-- stack is {a, '>>'|'<<', b, next}
+assert.ge(#r.stack, 4)
+assert(op == '>>' or op == '<<')
+		local a = castnumber(r.stack[-4].token)
+		local b = castnumber(r.stack[-2].token)
+		local result
+		if op == '>>' then
+			result = bit.rshift(a, b)
+		elseif op == '<<' then
+			result = bit.lshift(a, b)
+		else
+			error'here'
+		end
+		r:replaceStack(-4, -2, {
+			token = tostring(result),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level8(r)
+local top = #r.stack
+	level9(r)
+	if r:canbe'>='
+	or r:canbe'<='
+	or r:canbe'>'
+	or r:canbe'<'
+	then
+		level8(r)
+		local op = r.stack[-3].token
+-- stack is {a, '>='|'<='|'>'|'<', b, next}
+assert.ge(#r.stack, 4)
+assert(op == '>=' or op == '<=' or op == '>' or op == '<')
+		local a = castnumber(r.stack[-4].token)
+		local b = castnumber(r.stack[-2].token)
+		local result
+		if op == '>=' then
+			result = a >= b and '1' or '0'
+		elseif op == '<=' then
+			result = a <= b and '1' or '0'
+		elseif op == '>' then
+			result = a > b and '1' or '0'
+		elseif op == '<' then
+			result = a < b and '1' or '0'
+		else
+			error'here'
+		end
+		r:replaceStack(-4, -2, {
+			token = result,
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level7(r)
+local top = #r.stack
+	level8(r)
+	if r:canbe'==' or r:canbe'!=' then
+		level7(r)
+		local op = r.stack[-3].token
+-- stack is {a, '=='|'!=', b, next}
+assert.ge(#r.stack, 4)
+assert(op == '==' or op == '!=')
+		local a = castnumber(r.stack[-4].token)
+		local b = castnumber(r.stack[-2].token)
+		r:replaceStack(-4, -2, {
+			token = tostring(
+				op == '=='
+				and (a == b and '1' or '0')
+				or (a ~= b and '1' or '0')
+			),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level6(r)
+local top = #r.stack
+	level7(r)
+	if r:canbe'&' then
+		level6(r)
+-- stack is {a, '&', b, next}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '&')
+		r:replaceStack(-4, -2, {
+			token = tostring(
+				bit.band(
+					castnumber(r.stack[-4].token),
+					castnumber(r.stack[-2].token)
+				)
+			),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level5(r)
+local top = #r.stack
+	local a = level6(r)
+	if r:canbe'^' then
+		level5(r)
+-- stack is {a, '^', b, next}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '^')
+		r:replaceStack(-4, -2, {
+			token = tostring(
+				bit.bxor(
+					castnumber(r.stack[-4].token),
+					castnumber(r.stack[-2].token)
+				)
+			),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level4(r)
+local top = #r.stack
+	level5(r)
+	if r:canbe'|' then
+		level4(r)
+-- stack is {a, '|', b, next}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '|')
+		r:replaceStack(-4, -2, {
+			token = tostring(
+				bit.bor(
+					castnumber(r.stack[-4].token),
+					castnumber(r.stack[-2].token)
+				)
+			),
+			type = 'number',
+			space = ' ',
+		})
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level3(r)
+local top = #r.stack
+	level4(r)
+	if r:canbe'&&' then
+		level3(r)
+-- stack should be {a, '&&', b, next}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '&&')
+		r:replaceStack(-4, -2, castnumber(r.stack[-4].token) == 0
+			and r.stack[-2]
+			or r.stack[-4])
+	end
+assert.len(r.stack, top+1)
+end
+
+local function level2(r)
+local top = #r.stack
+	level3(r)
+	if r:canbe'||' then
+		level2(r)
+-- stack should be: {a, '||', b, next}
+assert.ge(#r.stack, 4)
+assert.eq(r.stack[-3].token, '||')
+		r:replaceStack(-4, -2, castnumber(r.stack[-4].token) ~= 0
+			and r.stack[-4]
+			or r.stack[-2])
+	end
+assert.len(r.stack, top+1)
+end
+
+function level1(r)	-- defined at the top 
+local top = #r.stack
+	level2(r)
+	if r:canbe'?' then
+		level1(r)
+		r:mustbe':'
+		level1(r)
+-- stack stack should be: {a, '?', b, ':', c, next}
+assert.ge(#r.stack, 6)
+assert.eq(r.stack[-5].token, '?')
+assert.eq(r.stack[-3].token, ':')
+		r:replaceStack(-6, -2, castnumber(r.stack[-6].token) ~= 0
+			and r.stack[-4]
+			or r.stack[-2])
+	end
+assert.len(r.stack, top+1)
+end
 
 function Preproc:parseCondInt(r)
 	assert(r)
@@ -610,436 +1036,7 @@ function Preproc:parseCondInt(r)
 	-- Windows ... smh
 --DEBUG:print('after macros:', r)
 
-	local cond
-
-	local level1
-
-	local function level13()
-local top = #r.stack
-		if r:canbetype'number' then
-			local prev = r.stack[-2].token
-
--- stack is {prev, next}
-
-			-- remove L/U suffix:
-			local val = assert(cliteralintegertonumber(prev), "expected number")	-- decimal number
-
-			-- put it back
-			-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
-			r:replaceStack(-2, -2, {
-				token = tostring(val),
-				type = 'number',
-				space = ' ',
-			})
-
-		elseif r:canbe'(' then
-			local node = level1()
-			r:mustbe')'
--- stack is {'(', prev, ')', next}
-			r:removeStack(-4)
-			r:removeStack(-2)
--- stack is {prev, next}
-		elseif r:canbe'defined' then
-			local par = r:canbe'('
--- stack is {'(', next}
-			r:removeStack(-2)
--- stack is {next}
-			r:mustbetype'name'
-			if par then
-				r:mustbe')'
--- stack is {name, ')', next}
-				r:removeStack(-2)
-			end
--- stack is {name, next}
-			r.stack[-2] = {
-				token = tostring(castnumber(self.macros[name])),
-				type = 'number',
-				space = ' ',
-			}
-		elseif r:canbe'_Pragma' then
-			-- here we want to eliminate the contents of the ()
-			-- so just reset the data and remove the %b()
-			local rest = string.trim(r:whatsLeft())
-			local par, rest = rest:match'^(%b())%s*(.*)$'
-assert(par)
-			r:setData(rest)
-			r:removeStack(-2)	-- remove the former-topmost that got appended into setData
-
-		elseif r:canbe'__has_include'
-		or r:canbe'__has_include_next'
-		then
-			local prev = r.stack[-2].token
-
-			r:mustbe'('
-			local rest = string.trim(r:whatsLeft())
-
-			local fn, sys
-			if rest:match'^"' then
-				fn, rest = rest:match'^(%b"")%s*(.*)$'
-			elseif rest:match'^<' then
-				fn, rest = rest:match'^(%b<>)%s*(.*)$'
-				sys = true
-			else
-				error('expected <> or ""')
-			end
-
-			local repl
-			if prev == '__has_include' then
-				repl = self:searchForInclude(fn, sys) and '1' or '0'
-			elseif prev == '__has_include_next' then
-				local foundPrevIncludeDir
-				for i=#self.includeStack,1,-1 do
-					local includeNextFile = self.includeStack[i]
-					local dir, prevfn = path(includeNextFile):getdir()
-					if prevfn.path == fn then
-						foundPrevIncludeDir = dir.path
-						break
-					end
-				end
-				repl = self:searchForInclude(fn, sys, foundPrevIncludeDir) and '1' or '0'
-			end
-
-			r:setData(rest)		-- set new data, pushes next token on the stack
-			r:replaceStack(-2, repl)	-- replace the former-topmost stack with true or false
-
-			r:mustbe')'
-			r:removeStack(-2)
-
-		elseif r:canbetype'name' then
-			local k = r.stack[-2].token
-			local v = self.macros[k]
-
-
-			if type(v) == 'string' then
-				-- then we need to wedge our string into the to-be-parsed content ...
-				-- throw out the old altogether?
-				r:setData(v..r:whatsLeft())
-				r:removeStack(-2)	-- remove the former-topmost that got appended into setData
-
-				level1()	-- when inserting macros, what level do I start at?
-
-			elseif type(v) == 'table' then
-				-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
-				-- otherwise I can just () balance regex and then insert it all into the current reader
-				local whatsLeft = r:whatsLeft()
-
-				whatsLeft = handleMacroArgs(whatsLeft, v.def)
-
-				-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-				r:setData(whatsLeft)
-				r:removeStack(-2)	-- remove the former-topmost that got appended into setData
-
-				level1()	-- when inserting macros, what level do I start at?
-
-			elseif type(v) == 'nil' then
-				-- any unknown/remaining macro variable is going to evaluate to 0
-				r.stack[-2] = {token='0', type='number', space=' '}
-			end
-		else
-			error("failed to parse expression: "..cur)
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level12()
-local top = #r.stack
-		if r:canbe'+'
-		or r:canbe'-'
-		or r:canbe'!'
-		or r:canbe'~'
-		-- prefix ++ and -- go here in C, but I'm betting not in C preprocessor ...
-		then
-			level13()
-			local op = r.stack[-3].token
--- stack is {'+'|'-'|'!'|'~', a, next}
-assert.ge(#r.stack, 3)
-assert(op == '+' or op == '-' or op == '!' or op == '~')
-
-			local a = castnumber(r.stack[-2].token)
-			local result
-			if op == '+' then
-				result = a
-			elseif op == '-' then
-				result = -a
-			elseif op == '!' then
-				result = a == 0 and 1 or 0
-			elseif op == '~' then
-				result = bit.bnot(a)
-			else
-				error'here'
-			end
-			r:replaceStack(-3, -2, {
-				token = tostring(result),
-				type = 'number',
-				space = ' ',
-			})
-		else
-			level13()
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level11()
-local top = #r.stack
-		level12()
-		if r:canbe'*' or r:canbe'/' or r:canbe'%' then
-			level11()
-			local op = r.stack[-3].token
--- stack is {a, '*'|'/'|'%', b, next}
-assert.ge(#r.stack, 4)
-assert(op == '*' or op == '/' or op == '%')
-			local a = castnumber(r.stack[-4].token)
-			local b = castnumber(r.stack[-2].token)
-			local result
-			if op == '*' then
-				result = a * b
-			elseif op == '/' then
-				result = a / b		-- always integer division?
-			elseif op == '%' then
-				result = a % b
-			else
-				error'here'
-			end
-			r:replaceStack(-4, -2, {
-				token = tostring(result),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level10()
-local top = #r.stack
-		level11()
-		if r:canbe'+' or r:canbe'-' then
-			level10()
-			local op = r.stack[-3].token
--- stack is {a, '+'|'-', b, next}
-assert.ge(#r.stack, 4)
-assert(op == '+' or op == '-')
-			local a = castnumber(r.stack[-4].token)
-			local b = castnumber(r.stack[-2].token)
-			local result
-			if op == '+' then
-				result = a + b
-			elseif op == '-' then
-				result = a - b
-			else
-				error'here'
-			end
-			r:replaceStack(-4, -2, {
-				token = tostring(result),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level9()
-local top = #r.stack
-		level10()
-		if r:canbe'>>' or r:canbe'<<' then
-			level9()
-			local op = r.stack[-3].token
--- stack is {a, '>>'|'<<', b, next}
-assert.ge(#r.stack, 4)
-assert(op == '>>' or op == '<<')
-			local a = castnumber(r.stack[-4].token)
-			local b = castnumber(r.stack[-2].token)
-			local result
-			if op == '>>' then
-				result = bit.rshift(a, b)
-			elseif op == '<<' then
-				result = bit.lshift(a, b)
-			else
-				error'here'
-			end
-			r:replaceStack(-4, -2, {
-				token = tostring(result),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level8()
-local top = #r.stack
-		level9()
-		if r:canbe'>='
-		or r:canbe'<='
-		or r:canbe'>'
-		or r:canbe'<'
-		then
-			level8()
-			local op = r.stack[-3].token
--- stack is {a, '>='|'<='|'>'|'<', b, next}
-assert.ge(#r.stack, 4)
-assert(op == '>=' or op == '<=' or op == '>' or op == '<')
-			local a = castnumber(r.stack[-4].token)
-			local b = castnumber(r.stack[-2].token)
-			local result
-			if op == '>=' then
-				result = a >= b and '1' or '0'
-			elseif op == '<=' then
-				result = a <= b and '1' or '0'
-			elseif op == '>' then
-				result = a > b and '1' or '0'
-			elseif op == '<' then
-				result = a < b and '1' or '0'
-			else
-				error'here'
-			end
-			r:replaceStack(-4, -2, {
-				token = result,
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level7()
-local top = #r.stack
-		level8()
-		if r:canbe'==' or r:canbe'!=' then
-			level7()
-			local op = r.stack[-3].token
--- stack is {a, '=='|'!=', b, next}
-assert.ge(#r.stack, 4)
-assert(op == '==' or op == '!=')
-			local a = castnumber(r.stack[-4].token)
-			local b = castnumber(r.stack[-2].token)
-			r:replaceStack(-4, -2, {
-				token = tostring(
-					op == '=='
-					and (a == b and '1' or '0')
-					or (a ~= b and '1' or '0')
-				),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level6()
-local top = #r.stack
-		level7()
-		if r:canbe'&' then
-			level6()
--- stack is {a, '&', b, next}
-assert.ge(#r.stack, 4)
-assert.eq(r.stack[-3].token, '&')
-			r:replaceStack(-4, -2, {
-				token = tostring(
-					bit.band(
-						castnumber(r.stack[-4].token),
-						castnumber(r.stack[-2].token)
-					)
-				),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level5()
-local top = #r.stack
-		local a = level6()
-		if r:canbe'^' then
-			level5()
--- stack is {a, '^', b, next}
-assert.ge(#r.stack, 4)
-assert.eq(r.stack[-3].token, '^')
-			r:replaceStack(-4, -2, {
-				token = tostring(
-					bit.bxor(
-						castnumber(r.stack[-4].token),
-						castnumber(r.stack[-2].token)
-					)
-				),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level4()
-local top = #r.stack
-		level5()
-		if r:canbe'|' then
-			level4()
--- stack is {a, '|', b, next}
-assert.ge(#r.stack, 4)
-assert.eq(r.stack[-3].token, '|')
-			r:replaceStack(-4, -2, {
-				token = tostring(
-					bit.bor(
-						castnumber(r.stack[-4].token),
-						castnumber(r.stack[-2].token)
-					)
-				),
-				type = 'number',
-				space = ' ',
-			})
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level3()
-local top = #r.stack
-		level4()
-		if r:canbe'&&' then
-			level3()
--- stack should be {a, '&&', b, next}
-assert.ge(#r.stack, 4)
-assert.eq(r.stack[-3].token, '&&')
-			r:replaceStack(-4, -2, castnumber(r.stack[-4].token) == 0
-				and r.stack[-2]
-				or r.stack[-4])
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local function level2()
-local top = #r.stack
-		level3()
-		if r:canbe'||' then
-			level2()
--- stack should be: {a, '||', b, next}
-assert.ge(#r.stack, 4)
-assert.eq(r.stack[-3].token, '||')
-			r:replaceStack(-4, -2, castnumber(r.stack[-4].token) ~= 0
-				and r.stack[-4]
-				or r.stack[-2])
-		end
-assert.len(r.stack, top+1)
-	end
-
-	level1 = function()
-local top = #r.stack
-		level2()
-		if r:canbe'?' then
-			level1()
-			r:mustbe':'
-			level1()
--- stack stack should be: {a, '?', b, ':', c, next}
-assert.ge(#r.stack, 6)
-assert.eq(r.stack[-5].token, '?')
-assert.eq(r.stack[-3].token, ':')
-			r:replaceStack(-6, -2, castnumber(r.stack[-6].token) ~= 0
-				and r.stack[-4]
-				or r.stack[-2])
-		end
-assert.len(r.stack, top+1)
-	end
-
-	local parse = level1()
+	local parse = level1(r)
 
 --DEBUG:print('got expression tree', tolua(parse))
 -- stack should be: {'#', 'if'/'elif', cond, next}
@@ -1486,12 +1483,13 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 						local r = Reader(l)
 
 						while not r:canbetype'done' do
+--DEBUG:print('#r.stack', #r.stack)
+--DEBUG:print('normal line handling token', tolua(r.stack[-1]))
 -- {..., last token consumed that isn't done, next}
-							-- try to expand stack[-2]
+							-- try to expand stack[-1]
 							-- i.e. try to apply level13 of the expr evaluator
 							r:next()
 						end
-
 
 					end
 				end

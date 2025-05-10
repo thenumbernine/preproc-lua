@@ -15,186 +15,8 @@ local path = require 'ext.path'
 local class = require 'ext.class'
 local bit = require 'bit'			-- either luajit's, or my vanilla Lua compat wrapper lib ...
 
-local namepat = '[_%a][_%w]*'
-
 local function isvalidsymbol(s)
-	return not not s:match('^'..namepat..'$')
-end
-
-local Preproc = class()
-
---static method
-function Preproc.removeCommentsAndApplyContinuations(code)
-
-	-- dos -> unix file format ... always?
-	-- what about just \r's?
-	code = code:gsub('\r\n', '\n')
-
-	-- should line continuations \ affect single-line comments?
-	-- if so then do this here
-	-- or should they not?  then do this after.
-	repeat
-		local i, j = code:find('\\\n')
-		if not i then break end
---DEBUG(removeCommentsAndApplyContinuations): print('was', tolua(code))
-		code = code:sub(1,i-1)..' '..code:sub(j+1)
---DEBUG(removeCommentsAndApplyContinuations): print('is', tolua(code))
-	until false
-
-	-- remove all /* */ blocks first
-	repeat
-		local i = code:find('/*',1,true)
-		if not i then break end
-		local j = code:find('*/',i+2,true)
-		if not j then
-			error("found /* with no */")
-		end
---DEBUG(removeCommentsAndApplyContinuations): print('was', tolua(code))
-		code = code:sub(1,i-1)..code:sub(j+2)
---DEBUG(removeCommentsAndApplyContinuations): print('is', tolua(code))
-	until false
-
-	-- [[ remove all // \n blocks first
-	repeat
-		local i = code:find('//',1,true)
-		if not i then break end
-		local j = code:find('\n',i+2,true) or #code
---DEBUG(removeCommentsAndApplyContinuations): print('was', tolua(code))
-		code = code:sub(1,i-1)..code:sub(j)
---DEBUG(removeCommentsAndApplyContinuations): print('is', tolua(code))
-	until false
-	--]]
-
-	return code
-end
-
-
--- whether, as a final pass, we combine non-semicolon lines
-Preproc.joinNonSemicolonLines = true
-
---[[
-Preproc(code)
-Preproc(args)
-args = table of:
-	code = code to use
-	sysIncludeDirs = include directories to use for <>
-	userIncludeDirs = include directories to use for ""
-	macros = macros to use
---]]
-function Preproc:init(args)
-	self.macros = {}
-
-	self.alreadyIncludedFiles = {}
-
-	self.sysIncludeDirs = table()
-	self.userIncludeDirs = table()
-
-	-- builtin/default macros?
-	-- here's some for gcc:
-	-- TODO move these to outside preproc?
-	self:setMacros{
-		__restrict = '',
-		__restrict__ = '',
-	}
-
-	-- the INCLUDE env var is for <> and not "", right?
-	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ...
-	-- maybe it's just for make?
-	-- yup, and make puts INCLUDE as a <> search folder
-	local incenv = os.getenv'INCLUDE'
-	if incenv then
-		self:addIncludeDirs(string.split(incenv, ';'), true)
-	end
-
-	if args ~= nil and (type(args) == 'string' or args.code) then
-		self(args)
-	end
-end
-
-function Preproc:getIncludeFileCode(fn, search, sys)
-	-- at position i, insert the file
-	return assert(path(fn):read(), "couldn't find file "..(
-		sys and ('<'..fn..'>') or ('"'..fn..'"')
-	))
-end
-
-function Preproc:getDefineCode(k, v, l)
---DEBUG(Preproc:getDefineCode): print('getDefineCode setting '..k..' to '..tolua(v))
-	self.macros[k] = v
-	return ''
-end
-
--- external API.  internal should use 'getDefineCode' for codegen
-function Preproc:setMacros(args)
-	--[[
-	for k,v in pairs(args) do
-	--]]
-	-- [[
-	for _,k in ipairs(table.keys(args):sort()) do
-		local v = args[k]
-	--]]
---DEBUG(Preproc:setMacros): print('setMacros setting '..k..' to '..tolua(v))
-		self.macros[k] = v
-	end
-end
-
-function Preproc:addIncludeDir(dir, sys)
-	-- should I fix paths of the user-provided userIncludeDirs? or just INCLUDE?
-	dir = dir:gsub('\\', '/')
-	if sys then
-		self.sysIncludeDirs:insert(dir)
-	else
-		self.userIncludeDirs:insert(dir)
-	end
-end
-
-function Preproc:addIncludeDirs(dirs, ...)
-	for _,dir in ipairs(dirs) do
-		self:addIncludeDir(dir, ...)
-	end
-end
-
-function Preproc:searchForInclude(fn, sys, startHere)
-	local includeDirs = sys
-		and self.sysIncludeDirs
-
-		--[[
-		seems "" searches also check <> search paths
-		but do <> searches also search "" search paths?
-		why even use different search folders?
-		--]]
-		--or self.userIncludeDirs
-		or table():append(self.userIncludeDirs, self.sysIncludeDirs)
-
-	local startIndex
-	if startHere then
---DEBUG(Preproc:searchForInclude): print('searching '..tolua(includeDirs))
---DEBUG(Preproc:searchForInclude): print('search starting '..tostring(startHere))
-		startHere = startHere:match'^(.-)/*$'	-- remove trailing /'s
-		for i=1,#includeDirs do
-			local dir = includeDirs[i]:match'^(.-)/*$'
---DEBUG(Preproc:searchForInclude): print("does "..tostring(startHere).." match "..tostring(dir).." ? "..tostring(dir == startHere))
-			if dir == startHere then
-				startIndex = i+1
-				break
-			end
-		end
---DEBUG(Preproc:searchForInclude): print('startIndex '..tostring(startIndex))
-		-- if we couldn't find startHere then ... is that good? do we just fallback on default? or do we error?
-		-- startHere is set when we are already in a file of a matching name, so we should be finding something, right?
-		if not startIndex then
-			error'here'
-		end
-	end
-	startIndex = startIndex or 1
-	for i=startIndex,#includeDirs do
-		d = includeDirs[i]
-		local p = d..'/'..fn
-		p = p:gsub('//+', '/')
-		if path(p):exists() then
-			return p
-		end
-	end
+	return not not s:match('^[_%a][_%w]*$')
 end
 
 -- largest to smalleste
@@ -248,7 +70,9 @@ local function gettokentype(s, i)
 		-- if we start as a word then read a word
 		ti1, ti2 = s:find('^[_%a][_%w]*', i)
 		tokentype = 'name'
+
 	elseif s:find('^%d', i) then
+-- TODO combine these suffixes with the ones on string parsing ...
 		-- TODO if you find a digit then go on to handle any suffix and then validate it later
 		if not ti1 then
 			ti1, ti2 = s:find('^0[Xx]%x+[Uu][Ll][Ll]', i)	-- ULL hex
@@ -473,6 +297,186 @@ function Reader:stackToString()
 	return self.stack:mapi(function(entry) return entry.space..entry.token end):concat()
 end
 
+
+
+
+
+local Preproc = class()
+
+--static method
+function Preproc.removeCommentsAndApplyContinuations(code)
+
+	-- dos -> unix file format ... always?
+	-- what about just \r's?
+	code = code:gsub('\r\n', '\n')
+
+	-- should line continuations \ affect single-line comments?
+	-- if so then do this here
+	-- or should they not?  then do this after.
+	repeat
+		local i, j = code:find('\\\n')
+		if not i then break end
+--DEBUG(removeCommentsAndApplyContinuations): print('was', tolua(code))
+		code = code:sub(1,i-1)..' '..code:sub(j+1)
+--DEBUG(removeCommentsAndApplyContinuations): print('is', tolua(code))
+	until false
+
+	-- remove all /* */ blocks first
+	repeat
+		local i = code:find('/*',1,true)
+		if not i then break end
+		local j = code:find('*/',i+2,true)
+		if not j then
+			error("found /* with no */")
+		end
+--DEBUG(removeCommentsAndApplyContinuations): print('was', tolua(code))
+		code = code:sub(1,i-1)..code:sub(j+2)
+--DEBUG(removeCommentsAndApplyContinuations): print('is', tolua(code))
+	until false
+
+	-- [[ remove all // \n blocks first
+	repeat
+		local i = code:find('//',1,true)
+		if not i then break end
+		local j = code:find('\n',i+2,true) or #code
+--DEBUG(removeCommentsAndApplyContinuations): print('was', tolua(code))
+		code = code:sub(1,i-1)..code:sub(j)
+--DEBUG(removeCommentsAndApplyContinuations): print('is', tolua(code))
+	until false
+	--]]
+
+	return code
+end
+
+
+-- whether, as a final pass, we combine non-semicolon lines
+Preproc.joinNonSemicolonLines = true
+
+--[[
+Preproc(code)
+Preproc(args)
+args = table of:
+	code = code to use
+	sysIncludeDirs = include directories to use for <>
+	userIncludeDirs = include directories to use for ""
+	macros = macros to use
+--]]
+function Preproc:init(args)
+	self.macros = {}
+
+	self.alreadyIncludedFiles = {}
+
+	self.sysIncludeDirs = table()
+	self.userIncludeDirs = table()
+
+	-- builtin/default macros?
+	-- here's some for gcc:
+	-- TODO move these to outside preproc?
+	self:setMacros{
+		__restrict = '',
+		__restrict__ = '',
+	}
+
+	-- the INCLUDE env var is for <> and not "", right?
+	-- not showing up at all in linux 'g++ -xc++ -E -v - < /dev/null' ...
+	-- maybe it's just for make?
+	-- yup, and make puts INCLUDE as a <> search folder
+	local incenv = os.getenv'INCLUDE'
+	if incenv then
+		self:addIncludeDirs(string.split(incenv, ';'), true)
+	end
+
+	if args ~= nil and (type(args) == 'string' or args.code) then
+		self(args)
+	end
+end
+
+function Preproc:getIncludeFileCode(fn, search, sys)
+	-- at position i, insert the file
+	return assert(path(fn):read(), "couldn't find file "..(
+		sys and ('<'..fn..'>') or ('"'..fn..'"')
+	))
+end
+
+function Preproc:getDefineCode(k, v, l)
+--DEBUG(Preproc:getDefineCode): print('getDefineCode setting '..k..' to '..tolua(v))
+	self.macros[k] = v
+	return ''
+end
+
+-- external API.  internal should use 'getDefineCode' for codegen
+function Preproc:setMacros(args)
+	--[[
+	for k,v in pairs(args) do
+	--]]
+	-- [[
+	for _,k in ipairs(table.keys(args):sort()) do
+		local v = args[k]
+	--]]
+--DEBUG(Preproc:setMacros): print('setMacros setting '..k..' to '..tolua(v))
+		self.macros[k] = v
+	end
+end
+
+function Preproc:addIncludeDir(dir, sys)
+	-- should I fix paths of the user-provided userIncludeDirs? or just INCLUDE?
+	dir = dir:gsub('\\', '/')
+	if sys then
+		self.sysIncludeDirs:insert(dir)
+	else
+		self.userIncludeDirs:insert(dir)
+	end
+end
+
+function Preproc:addIncludeDirs(dirs, ...)
+	for _,dir in ipairs(dirs) do
+		self:addIncludeDir(dir, ...)
+	end
+end
+
+function Preproc:searchForInclude(fn, sys, startHere)
+	local includeDirs = sys
+		and self.sysIncludeDirs
+
+		--[[
+		seems "" searches also check <> search paths
+		but do <> searches also search "" search paths?
+		why even use different search folders?
+		--]]
+		--or self.userIncludeDirs
+		or table():append(self.userIncludeDirs, self.sysIncludeDirs)
+
+	local startIndex
+	if startHere then
+--DEBUG(Preproc:searchForInclude): print('searching '..tolua(includeDirs))
+--DEBUG(Preproc:searchForInclude): print('search starting '..tostring(startHere))
+		startHere = startHere:match'^(.-)/*$'	-- remove trailing /'s
+		for i=1,#includeDirs do
+			local dir = includeDirs[i]:match'^(.-)/*$'
+--DEBUG(Preproc:searchForInclude): print("does "..tostring(startHere).." match "..tostring(dir).." ? "..tostring(dir == startHere))
+			if dir == startHere then
+				startIndex = i+1
+				break
+			end
+		end
+--DEBUG(Preproc:searchForInclude): print('startIndex '..tostring(startIndex))
+		-- if we couldn't find startHere then ... is that good? do we just fallback on default? or do we error?
+		-- startHere is set when we are already in a file of a matching name, so we should be finding something, right?
+		if not startIndex then
+			error'here'
+		end
+	end
+	startIndex = startIndex or 1
+	for i=startIndex,#includeDirs do
+		d = includeDirs[i]
+		local p = d..'/'..fn
+		p = p:gsub('//+', '/')
+		if path(p):exists() then
+			return p
+		end
+	end
+end
+
 local function cLiteralIntegerToNumber(x)
 	-- ok Lua tonumber hack ...
 	-- tonumber'0x10' converts from base 16 ..
@@ -499,138 +503,30 @@ local function castnumber(x)
 	return n
 end
 
--- now to evalute the tree
-function Preproc:evalAST(t)
-	if t[1] == 'number' then
-		assert.len(t, 2)
-		return assert(cLiteralIntegerToNumber(t[2]), "failed to parse number "..tostring(t[2]))
-	elseif t[1] == '!' then
-		assert.len(t, 2)
-		return castnumber(self:evalAST(t[2])) == 0 and 1 or 0
-	elseif t[1] == '~' then
-		assert.len(t, 2)
-		-- TODO here we are using ffi's bit lib ...
-		return bit.bnot(castnumber(self:evalAST(t[2])))
-	elseif t[1] == '^' then
-		assert.len(t, 3)
-		return bit.bxor(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3])))
-	elseif t[1] == '&' then
-		assert.len(t, 3)
-		return bit.band(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))
-		)
-	elseif t[1] == '|' then
-		assert.len(t, 3)
-		return bit.bor(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))
-		)
-	elseif t[1] == '<<' then
-		assert.len(t, 3)
-		return bit.lshift(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))
-		)
-	elseif t[1] == '>>' then
-		assert.len(t, 3)
-		return bit.rshift(
-			castnumber(self:evalAST(t[2])),
-			castnumber(self:evalAST(t[3]))
-		)
-	elseif t[1] == '+' then
-		assert(#t == 2 or #t == 3)
-		if #t == 3 then
-			return castnumber(self:evalAST(t[2]))
-				+ castnumber(self:evalAST(t[3]))
-		elseif #t == 2 then
-			return castnumber(self:evalAST(t[2]))
-		end
-	elseif t[1] == '-' then
-		assert(#t == 2 or #t == 3)
-		if #t == 3 then
-			return castnumber(self:evalAST(t[2]))
-				- castnumber(self:evalAST(t[3]))
-		elseif #t == 2 then
-			return -castnumber(self:evalAST(t[2]))
-		end
-	elseif t[1] == '*' then
-		assert.len(t, 3)
-		return castnumber(self:evalAST(t[2]))
-			* castnumber(self:evalAST(t[3]))
-	elseif t[1] == '/' then
-		assert.len(t, 3)
-		return castnumber(self:evalAST(t[2]))
-			/ castnumber(self:evalAST(t[3]))
-	elseif t[1] == '%' then
-		assert.len(t, 3)
-		return castnumber(self:evalAST(t[2]))
-			% castnumber(self:evalAST(t[3]))
-	elseif t[1] == '&&' then
-		assert.len(t, 3)
-		if castnumber(self:evalAST(t[2])) ~= 0
-		and castnumber(self:evalAST(t[3])) ~= 0
-		then
-			return 1
-		end
-		return 0
-	elseif t[1] == '||' then
-		assert.len(t, 3)
-		if self:evalAST(t[2]) ~= 0
-		or self:evalAST(t[3]) ~= 0
-		then
-			return 1
-		end
-		return 0
-	elseif t[1] == '==' then
-		assert.len(t, 3)
-		return (castnumber(self:evalAST(t[2])) == castnumber(self:evalAST(t[3]))) and 1 or 0
-	elseif t[1] == '>=' then
-		assert.len(t, 3)
-		return (castnumber(self:evalAST(t[2])) >= castnumber(self:evalAST(t[3]))) and 1 or 0
-	elseif t[1] == '<=' then
-		assert.len(t, 3)
-		return (castnumber(self:evalAST(t[2])) <= castnumber(self:evalAST(t[3]))) and 1 or 0
-	elseif t[1] == '!=' then
-		assert.len(t, 3)
-		return (castnumber(self:evalAST(t[2])) ~= castnumber(self:evalAST(t[3]))) and 1 or 0
-	elseif t[1] == '>' then
-		assert.len(t, 3)
-		return (castnumber(self:evalAST(t[2])) > castnumber(self:evalAST(t[3]))) and 1 or 0
-	elseif t[1] == '<' then
-		assert.len(t, 3)
-		return (castnumber(self:evalAST(t[2])) < castnumber(self:evalAST(t[3]))) and 1 or 0
-	elseif t[1] == '?' then
-		assert.len(t, 4)
-		if castnumber(self:evalAST(t[2])) ~= 0 then
-			return castnumber(self:evalAST(t[3]))
-		else
-			return castnumber(self:evalAST(t[4]))
-		end
-	else
-		error("don't know how to handle this ast entry "..t[1])
-	end
-end
-
 -- try to evaluate the token at the top
 -- like level13, but unlike it this doesn't fail if it can't evaluate it
 function Preproc:tryToEval(r)
 --DEBUG:print('Preproc:tryToEval', tolua(r.stack[-1]))
 local top = #r.stack
 local rest = r:whatsLeft()
+
+	-- what does this even do?
 	if r:canbe'_Pragma' then
--- { ..., "_Pragma", next)
-assert.eq(r.stack[-2].token, '_Pragma')
 --DEBUG:print'...handling _Pragma'
+-- stack: {..., "_Pragma", next)
+assert.eq(r:removeStack(-2).token, '_Pragma')
+-- stack: {..., next)
 		-- here we want to eliminate the contents of the ()
 		-- so just reset the data and remove the %b()
 		local rest = string.trim(r:whatsLeft())
 		local par, rest = rest:match'^(%b())%s*(.*)$'
 assert(par)
+		r:removeStack(-1)
+-- stack: {...}
 		r:setData(rest)
-		r:removeStack(-2)	-- remove the former-topmost that got appended into setData
+-- stack: {..., next}
+		r:insertStack(-1, '0')
+-- stack: {..., "0", next}
 
 	elseif r:canbe'__has_include'
 	or r:canbe'__has_include_next'
@@ -712,17 +608,44 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 -- stack: {..., next}
 			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
 			-- otherwise I can just () balance regex and then insert it all into the current reader
-			local rest = r:whatsLeft()
-			rest = handleMacroArgs(rest, v.def)
+			local par, rest
+			rest = string.trim(r:whatsLeft())
+			par, rest = rest:match'^(%b())%s*(.*)$'
+
+			-- now we have to count () balance ourselves to find our where the right commas go ...
+			assert(par, "macro expected arguments")
+
+			-- TODO ()-balancing and comma-separation for the arguments ...
+			local macroValues
+
+
+			-- this is old API
+			-- does it work with multiline applications?
+			-- TODO rewrite it to expect the key to come first
+			--self:handleMacroWithArgs(prev..rest, k, v.params)
+error'here'
+
+			-- is this a bad idea?  I'm just gonna push/pop the macro stack with our args
+			local pushMacros = self.macros
+			self.macros = table(self.macros):setmetatable(nil)
+			for i,arg in ipairs(v.params) do
+				self.macros[arg] = macroValues[i]
+			end
+
 			r:removeStack(-1)
 -- stack: {...}
 
 			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-			r:setData(rest)
+			r:setData('('..v.def..')'..rest)
 -- stack: {..., next}
 
-			self:level1(r)	-- when inserting macros, what level do I start at?
+			-- when inserting macros, what level do I start at?
+			-- to handle scope, lets wrap in ( ) and use level13's ( ) evaluation
+			self:level13(r)
 -- stack: {..., result, next}
+
+			-- ... and restore after we've evaluated ... .... how much ... ?
+			self.macros = pushMacros
 
 		elseif type(v) == 'nil' then
 			-- any unknown/remaining macro variable is going to evaluate to 0

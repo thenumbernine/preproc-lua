@@ -605,9 +605,13 @@ function Preproc:parseMacroArgs(paramStr, vparams)
 	return paramMap
 end
 
--- try to evaluate the token at the top
--- like level13, but unlike it this doesn't fail if it can't evaluate it
-function Preproc:tryToEval(r)
+--[[
+try to evaluate the token at the top
+this is used by level13, but unlike it this doesn't fail if it can't evaluate it
+this is also used by normal-line macro-expansion with evaluatingPlainCode=true
+evaluatingPlainCode tells it not to call back into the :level*() functions for expression-evaluation, just macro-replacement.
+--]]
+function Preproc:tryToEval(r, evaluatingPlainCode)
 --DEBUG:print('Preproc:tryToEval', tolua(r.stack[-1]))
 local top = #r.stack
 local rest = r:whatsLeft()
@@ -630,7 +634,7 @@ local rest = r:whatsLeft()
 			r:setData(v..rest)
 -- stack: {..., next}
 
-			if not self.evaluatingPlainCode then
+			if not evaluatingPlainCode then
 				self:level1(r)	-- when inserting macros, what level do I start at?
 			else
 				-- TODO
@@ -693,7 +697,7 @@ local rest = r:whatsLeft()
 
 			-- when inserting macros, what level do I start at?
 			-- to handle scope, lets wrap in ( ) and use level13's ( ) evaluation
-			if not self.evaluatingPlainCode then
+			if not evaluatingPlainCode then
 				self:level1(r)
 			else
 				-- same argument as above
@@ -711,7 +715,7 @@ local rest = r:whatsLeft()
 --DEBUG:print('... macro was not defined')
 			-- any unknown/remaining macro variable is going to evaluate to 0
 
-			if self.evaluatingPlainCode then
+			if evaluatingPlainCode then
 				-- if we're not in a macro-eval then leave it as is
 -- stack: {..., name, next}
 			else
@@ -1617,9 +1621,7 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 -- {..., last token consumed that isn't done, next}
 
 							-- see if we can expand it to a token ...
-							self.evaluatingPlainCode = true	-- TODO or just pass a flag through the 'eval' levels
-							self:tryToEval(r)
-							self.evaluatingPlainCode = nil
+							self:tryToEval(r, true)
 
 							-- try to expand stack[-1]
 							-- i.e. try to apply level13 of the expr evaluator

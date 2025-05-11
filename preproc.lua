@@ -688,7 +688,25 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 			r:setData(v..rest)
 -- stack: {..., next}
 
-			self:level1(r)	-- when inserting macros, what level do I start at?
+			if not self.evaluatingPlainCode then
+				self:level1(r)	-- when inserting macros, what level do I start at?
+			else
+				-- TODO
+				-- levelX() wants one new thing on the stack
+				-- and the stack assertion is at the end of this function
+				-- but 
+				-- this is also called from evaluatingPlainCode's tryToEval()
+				-- and in that case we don't care 
+				-- but for consistency, 
+				-- here's an empty string
+				--r:insertStack(-1, '')
+				-- ... tokentype classifier will complain so ...
+				r.stack:insert(#r.stack, {
+					token='',
+					type='space',
+					space='',
+				})			
+			end
 -- stack: {..., result, next}
 
 		elseif type(v) == 'table' then
@@ -732,13 +750,24 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 
 			-- when inserting macros, what level do I start at?
 			-- to handle scope, lets wrap in ( ) and use level13's ( ) evaluation
-			self:level13(r)
+			if not self.evaluatingPlainCode then
+				self:level1(r)
+			else
+				-- same argument as above
+				--r:insertStack(-1, '') 
+				-- ... tokentype classifier will complain so ...
+				r.stack:insert(#r.stack, {
+					token='',
+					type='space',
+					space='',
+				})
+			end
 -- stack: {..., result, next}
 
 		elseif type(v) == 'nil' then
 			-- any unknown/remaining macro variable is going to evaluate to 0
 
-			if self.evalLeaveUndefinedNames then
+			if self.evaluatingPlainCode then
 				-- if we're not in a macro-eval then leave it as is
 -- stack: {..., name, next}
 			else
@@ -1552,9 +1581,9 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 -- {..., last token consumed that isn't done, next}
 
 							-- see if we can expand it to a token ...
-							self.evalLeaveUndefinedNames = true	-- TODO or just pass a flag through the 'eval' levels
+							self.evaluatingPlainCode = true	-- TODO or just pass a flag through the 'eval' levels
 							self:tryToEval(r)
-							self.evalLeaveUndefinedNames = nil
+							self.evaluatingPlainCode = nil
 
 							-- try to expand stack[-1]
 							-- i.e. try to apply level13 of the expr evaluator

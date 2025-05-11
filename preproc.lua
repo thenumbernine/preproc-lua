@@ -617,6 +617,7 @@ local rest = r:whatsLeft()
 --DEBUG:print('...handling named macro: '..tolua(k)..' = '..tolua(v))
 
 		if type(v) == 'string' then
+--DEBUG:print('... macro is direct replacement')
 			assert.eq(r:removeStack(-2).token, k)
 -- stack: {..., next}
 			-- then we need to wedge our string into the to-be-parsed content ...
@@ -649,6 +650,7 @@ local rest = r:whatsLeft()
 -- stack: {..., result, next}
 
 		elseif type(v) == 'table' then
+--DEBUG:print('... macro has arguments')
 			assert.eq(r:removeStack(-2).token, k)
 -- stack: {..., next}
 			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
@@ -704,12 +706,18 @@ local rest = r:whatsLeft()
 -- stack: {..., result, next}
 
 		elseif type(v) == 'nil' then
+--DEBUG:print('... macro was not defined')
 			-- any unknown/remaining macro variable is going to evaluate to 0
 
 			if self.evaluatingPlainCode then
 				-- if we're not in a macro-eval then leave it as is
 -- stack: {..., name, next}
 			else
+
+				if r:canbe'(' then
+					error("function-like macro "..tolua(k).." is not defined")
+				end
+
 				-- if we're in a macro-eval then replace with a 0
 				r:replaceStack(-2, -2, '0')
 -- stack: {..., "0", next}

@@ -1119,7 +1119,7 @@ assert.len(r.stack, 1)
 	self:level1(r)
 
 -- stack: {cond, next}
-print('stack', tolua(r.stack))
+--DEBUG:print('stack', tolua(r.stack))
 assert.len(r.stack, 2)
 	r:mustbetype'done'
 
@@ -1374,7 +1374,7 @@ assert.len(r.stack, 1)
 						assert.gt(#ifstack, 0, "found an #else without an #if")
 						local oldcond = ifstack:last()
 						local hasprocessed = oldcond[1] or oldcond[2]
-						assert.eq(rest, '', "found trailing characters after "..cmd)
+						r:mustbetype'done'
 						ifstack[#ifstack] = {not hasprocessed, hasprocessed}
 						lines:remove(i)
 						i = i - 1
@@ -1399,13 +1399,13 @@ assert.len(r.stack, 1)
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'endif' then
-						assert.eq(rest, '', "found trailing characters after "..cmd)
+						r:mustbetype'done'
 						closeIf(cmd)
 						ifHandled = nil
 						lines:remove(i)
 						i = i - 1
 					elseif cmd == 'undef' then
-						local rest = r:whatsLeft()
+						local rest = string.trim(r:whatsLeft())
 						assert(isvalidsymbol(rest))
 						if eval then
 							--[[

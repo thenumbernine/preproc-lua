@@ -68,6 +68,31 @@ printf("Y = %d\n", ((1)+1));
 
 p = Preproc()
 p[[
-#if defined (WIN32)
+#if defined (notdefined)
+#endif
+]]
+
+assert.error(function()
+	p = Preproc()
+	p[[
+	#error here
+	]]
+end)
+
+assert.error(function()
+	p = Preproc()
+	p[[
+	#if defined (notdefined)
+	#else
+		#error "here"
+	#endif
+	]]
+end)
+
+p = Preproc()
+p[[
+#if defined (notdefined)
+	#error "here"
+#else
 #endif
 ]]

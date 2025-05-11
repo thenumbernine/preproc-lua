@@ -280,6 +280,8 @@ function Reader:replaceStack(startPos, endPos, ...)
 	if endPos < 0 then endPos = endPos + 1 + #self.stack end
 	local removed = self.stack:sub(startPos, endPos)
 	for i=startPos,endPos do
+assert.le(1, startPos)
+assert.le(startPos, #self.stack)
 		assert(self.stack:remove(startPos))
 	end
 	-- insert left to right, in order (not reversed), so that each token can see its predecessor in the stack
@@ -836,8 +838,10 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 		assert.eq(r:removeStack(-2).token, 'defined')
 -- stack: {next}
 		local par = r:canbe'('
+		if par then
 -- stack: {'(', next}
-		assert.eq(r:removeStack(-2).token, '(')
+			assert.eq(r:removeStack(-2).token, '(')
+		end
 -- stack: {next}
 		local name = r:mustbetype'name'
 --DEBUG:print('evaluating defined('..tolua(name)..')')

@@ -486,6 +486,10 @@ function Preproc:searchForInclude(fn, sys, startHere)
 end
 
 local function cLiteralIntegerToNumber(x)
+	if type(x) == 'string' then
+		-- remove C number suffixes
+		x = x:match'^(.*)[UuLlZz][UuLl]?[Ll]?$' or x
+	end
 	-- ok Lua tonumber hack ...
 	-- tonumber'0x10' converts from base 16 ..
 	-- tonumber'010' converts from base 10 *NOT* base 8 ...
@@ -732,7 +736,8 @@ local rest = r:whatsLeft()
 -- stack: {prev, next}
 
 		-- remove L/U suffix:
-		local val = assert(cLiteralIntegerToNumber(prev), "expected number")	-- decimal number
+		local val = cLiteralIntegerToNumber(prev)
+			or error("expected number.  found "..tolua(prev))	-- decimal number
 
 		-- put it back
 		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles

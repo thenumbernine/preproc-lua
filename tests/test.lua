@@ -96,3 +96,10 @@ p[[
 #else
 #endif
 ]]
+
+p = Preproc()
+p[[
+#define __STDC_VERSION__ 201710L
+#if __STDC_VERSION__ < 199901
+#endif
+]]

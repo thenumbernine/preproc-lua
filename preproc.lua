@@ -122,13 +122,7 @@ local function gettokentype(s, i)
 			end
 		end
 		tokentype = 'string'
-	
-	-- I didn't want to handle these here
-	-- but if we setData() to something with spaces on the rhs then it can happen
-	-- or should I just string.trim() all incoming data?
-	elseif i == #s + 1 then	-- i.e. s:find('', i) will hit
-		ti1, ti2 = #s+1, #s 
-		tokentype = 'space'
+
 	else
 		-- see if it's a symbol, searching biggest to smallest
 		for k,esc in ipairs(cSymbolEscs) do
@@ -166,6 +160,9 @@ function Reader:resetData(data)
 	self:setData(data)
 end
 function Reader:setData(data)
+	-- I might regret this but here's me erasing spaces on the rhs
+	data = data:match'^(.-)%s*$'
+
 	self.data = data
 	self.index = 1
 	self:next()		-- prep next symbol as top
@@ -238,9 +235,7 @@ end
 local function determineSpace(prevEntry, thisEntry)
 	local space = ''
 	if prevEntry then
-		if thisEntry.type == 'space' then
-			space = ' '
-		elseif (thisEntry.type == 'name' or thisEntry.type == 'number')
+		if (thisEntry.type == 'name' or thisEntry.type == 'number')
 		and (prevEntry.type == 'name' or prevEntry.type == 'number')
 		then
 			-- if the neighboring token types don't play well then put a space
@@ -628,6 +623,8 @@ local origline = r:whatsLeft()
 	if r:canbetype'name' then
 -- stack: {..., name, next}
 		local k = r.stack[-2].token
+		local kspace = r.stack[-2].space	-- space before this entry
+
 		local v = self.macros[k]
 --DEBUG:print('...handling named macro: '..tolua(k)..' = '..tolua(v))
 
@@ -640,13 +637,16 @@ local origline = r:whatsLeft()
 			local rest = r:whatsLeft()
 			r:removeStack(-1)
 -- stack: {...}
-			r:setData(v..' '..rest)
+			r:setData(kspace..v..' '..rest)
 -- stack: {..., next}
 
 			if not evaluatingPlainCode then
 				self:level1(r)	-- when inserting macros, what level do I start at?
 			else
-				r:insertStack(-1, '')
+				-- to pass the test at the end we should insert ''
+				-- but that will mess things up later
+				-- so just return now
+				return true
 			end
 -- stack: {..., result, next}
 
@@ -687,7 +687,7 @@ local origline = r:whatsLeft()
 --DEBUG:print('evalated to', eval)
 
 			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-			r:setData(eval..' '..rest)
+			r:setData(kspace..eval..' '..rest)
 -- stack: {..., next}
 
 			-- when inserting macros, what level do I start at?
@@ -695,7 +695,10 @@ local origline = r:whatsLeft()
 			if not evaluatingPlainCode then
 				self:level1(r)
 			else
-				r:insertStack(-1, '')
+				-- to pass the test at the end we should insert ''
+				-- but that will mess things up later
+				-- so just return now
+				return true
 			end
 -- stack: {..., result, next}
 

@@ -511,7 +511,7 @@ local function castnumber(x)
 	if x == false then return 0 end
 	if x == true then return 1 end
 	local n = cLiteralIntegerToNumber(x)
-	if not n then error("couldn't cast to number: "..x) end
+	if not n then error("couldn't cast to number: "..tolua(x)) end
 	return n
 end
 
@@ -820,7 +820,7 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 
 		r:mustbe')'
 -- stack: {..., repl, ")", next}
-		assert.eq(r:removeStack(-2).token, '(')
+		assert.eq(r:removeStack(-2).token, ')')
 -- stack: {..., repl, next}
 
 	elseif r:canbe'defined' then
@@ -841,7 +841,7 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 		end
 -- stack: {name, next}
 		assert.eq(r.stack[-2].token, name)
-		r:replaceStack(-2, -2, tostring(castnumber(self.macros[name])))
+		r:replaceStack(-2, -2, self.macros[name] and '1' or '0')
 	else
 		-- do 'tryToEval' last to catch all other names we didn't just handle above
 		if not self:tryToEval(r) then

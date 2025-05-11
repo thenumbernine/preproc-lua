@@ -103,3 +103,9 @@ p[[
 #if __STDC_VERSION__ < 199901
 #endif
 ]]
+
+p = Preproc{sysIncludeDirs={'/usr/local/include'}}
+p[[
+#if __has_include(<stdio.h>)
+#endif
+]]

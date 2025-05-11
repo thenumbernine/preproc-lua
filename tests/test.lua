@@ -1,7 +1,28 @@
 #!/usr/bin/env luajit
 local assert = require 'ext.assert'
-
 local Preproc = require 'preproc'
+
+local p = Preproc()
+p''
+p' '
+p'\n'
+
+local p = Preproc()
+local result = p[[
+#define __PTRDIFF_TYPE__ int
+typedef __PTRDIFF_TYPE__ ptrdiff_t;
+]]
+assert.eq(p.macros.__PTRDIFF_TYPE__, 'int')
+assert.eq(result, 'typedef int ptrdiff_t;')
+
+local p = Preproc()
+local result = p[[
+#define __PTRDIFF_TYPE__ long int
+typedef __PTRDIFF_TYPE__ ptrdiff_t;
+]]
+assert.eq(p.macros.__PTRDIFF_TYPE__, 'long int')
+assert.eq(result, 'typedef long int ptrdiff_t;')
+
 --local Preproc = require 'preproc.preproc-old'
 local p = Preproc()
 
@@ -39,8 +60,8 @@ assert.len(Z.def, 5)
 assert.tableieq(Z.def:mapi(function(e) return e.token end), {'a', '+', 'b', '*', 'c'})
 assert.tableieq(Z.def:mapi(function(e) return e.type end), {'name', 'symbol', 'name', 'symbol', 'name'})
 assert.tableieq(Z.params, {'a', 'b', 'c'})
---[=[
 
+--[=[
 -- assert error:
 local p = Preproc[[
 #define X(1)	// bad ... "invalid token in macro processing" at the '1'
@@ -62,8 +83,8 @@ int main() {
 }
 ]]
 assert.eq(results, [[
-int main() { printf("X = %d\n",(1));
-printf("Y = %d\n", ((1)+1));
+int main() { printf("X = %d\n", (1) );
+printf("Y = %d\n", ((1)+1) );
 }]])
 
 p = Preproc()
@@ -109,3 +130,23 @@ p[[
 #if __has_include(<stdio.h>)
 #endif
 ]]
+
+p = Preproc()
+p[[
+
+#if defined(__musl__)
+	#error shouldn't reach here
+#else
+
+#if !defined(__need_ptrdiff_t) && !defined(__need_size_t) &&                   \
+    !defined(__need_rsize_t) && !defined(__need_wchar_t) &&                    \
+    !defined(__need_NULL) && !defined(__need_nullptr_t) &&                     \
+    !defined(__need_unreachable) && !defined(__need_max_align_t) &&            \
+    !defined(__need_offsetof) && !defined(__need_wint_t)
+	#define SUCCESS
+#else
+	#define FAIL
+#endif
+]]
+assert(not p.macros.FAIL)
+assert(p.macros.SUCCESS)

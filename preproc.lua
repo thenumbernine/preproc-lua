@@ -122,13 +122,20 @@ local function gettokentype(s, i)
 			end
 		end
 		tokentype = 'string'
+	
+	-- I didn't want to handle these here
+	-- but if we setData() to something with spaces on the rhs then it can happen
+	-- or should I just string.trim() all incoming data?
+	elseif i == #s + 1 then	-- i.e. s:find('', i) will hit
+		ti1, ti2 = #s+1, #s 
+		tokentype = 'space'
 	else
 		-- see if it's a symbol, searching biggest to smallest
 		for k,esc in ipairs(cSymbolEscs) do
 			ti1, ti2 = s:find(esc, i)
 			if ti1 then break end
 		end
-		assert(ti1, "failed to find any valid symbols at "..s:sub(i, i+20))
+		if not ti1 then error("gettokentype failed with: "..tolua(s:sub(i, i+20))) end
 		tokentype = 'symbol'
 	end
 	return tokentype, ti1, ti2
@@ -165,7 +172,7 @@ function Reader:setData(data)
 end
 
 function Reader:next()
---DEBUG:print'Reader:next()'
+--DEBUG:print('Reader:next() index='..self.index..', #self.data='..#self.data)
 	if self.index > #self.data then
 		if #self.stack == 0
 		or self.stack:last().type ~= 'done'
@@ -231,7 +238,9 @@ end
 local function determineSpace(prevEntry, thisEntry)
 	local space = ''
 	if prevEntry then
-		if (thisEntry.type == 'name' or thisEntry.type == 'number')
+		if thisEntry.type == 'space' then
+			space = ' '
+		elseif (thisEntry.type == 'name' or thisEntry.type == 'number')
 		and (prevEntry.type == 'name' or prevEntry.type == 'number')
 		then
 			-- if the neighboring token types don't play well then put a space
@@ -614,7 +623,7 @@ evaluatingPlainCode tells it not to call back into the :level*() functions for e
 function Preproc:tryToEval(r, evaluatingPlainCode)
 --DEBUG:print('Preproc:tryToEval', tolua(r.stack[-1]))
 local top = #r.stack
-local rest = r:whatsLeft()
+local origline = r:whatsLeft()
 
 	if r:canbetype'name' then
 -- stack: {..., name, next}
@@ -631,27 +640,13 @@ local rest = r:whatsLeft()
 			local rest = r:whatsLeft()
 			r:removeStack(-1)
 -- stack: {...}
-			r:setData(v..rest)
+			r:setData(v..' '..rest)
 -- stack: {..., next}
 
 			if not evaluatingPlainCode then
 				self:level1(r)	-- when inserting macros, what level do I start at?
 			else
-				-- TODO
-				-- levelX() wants one new thing on the stack
-				-- and the stack assertion is at the end of this function
-				-- but
-				-- this is also called from evaluatingPlainCode's tryToEval()
-				-- and in that case we don't care
-				-- but for consistency,
-				-- here's an empty string
-				--r:insertStack(-1, '')
-				-- ... tokentype classifier will complain so ...
-				r.stack:insert(#r.stack, {
-					token='',
-					type='space',
-					space='',
-				})
+				r:insertStack(-1, '')
 			end
 -- stack: {..., result, next}
 
@@ -692,7 +687,7 @@ local rest = r:whatsLeft()
 --DEBUG:print('evalated to', eval)
 
 			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-			r:setData(eval..rest)
+			r:setData(eval..' '..rest)
 -- stack: {..., next}
 
 			-- when inserting macros, what level do I start at?
@@ -700,14 +695,7 @@ local rest = r:whatsLeft()
 			if not evaluatingPlainCode then
 				self:level1(r)
 			else
-				-- same argument as above
-				--r:insertStack(-1, '')
-				-- ... tokentype classifier will complain so ...
-				r.stack:insert(#r.stack, {
-					token='',
-					type='space',
-					space='',
-				})
+				r:insertStack(-1, '')
 			end
 -- stack: {..., result, next}
 
@@ -715,11 +703,7 @@ local rest = r:whatsLeft()
 --DEBUG:print('... macro was not defined')
 			-- any unknown/remaining macro variable is going to evaluate to 0
 
-			if evaluatingPlainCode then
-				-- if we're not in a macro-eval then leave it as is
--- stack: {..., name, next}
-			else
-
+			if not evaluatingPlainCode then
 				if r:canbe'(' then
 					error("function-like macro "..tolua(k).." is not defined")
 				end
@@ -727,10 +711,13 @@ local rest = r:whatsLeft()
 				-- if we're in a macro-eval then replace with a 0
 				r:replaceStack(-2, -2, '0')
 -- stack: {..., "0", next}
+			else
+				-- if we're not in a macro-eval then leave it as is
+-- stack: {..., name, next}
 			end
 		end
 	else
---DEBUG:print("...couldn't handle "..tolua(rest))
+--DEBUG:print("...couldn't handle "..tolua(origline))
 --DEBUG:print("The stack better not have changed.")
 assert.len(r.stack, top)
 		return false
@@ -1221,7 +1208,7 @@ function Preproc:__call(args)
 					end
 				end
 
---DEBUG:print('line is '..tolua(l)..' eval is '..tolua(eval)..' preveval is '..tolua(preveval))
+--DEBUG:print('GOT NEW LINE: '..tolua(l)..' eval is '..tolua(eval)..' preveval is '..tolua(preveval))
 
 				local function closeIf(cmd)
 					assert.gt(#ifstack, 0, 'found an #'..cmd..' without an #if')
@@ -1621,11 +1608,12 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 -- {..., last token consumed that isn't done, next}
 
 							-- see if we can expand it to a token ...
-							self:tryToEval(r, true)
-
-							-- try to expand stack[-1]
-							-- i.e. try to apply level13 of the expr evaluator
-							r:next()
+							-- if it succeeds then the token or its evaluation is pushed onto the stack
+							if not self:tryToEval(r, true) then
+								-- try to expand stack[-1]
+								-- i.e. try to apply level13 of the expr evaluator
+								r:next()
+							end
 						end
 
 						-- TODO only replace line if we ever replaced a macro?

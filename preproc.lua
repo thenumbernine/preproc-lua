@@ -503,6 +503,94 @@ local function castnumber(x)
 	return n
 end
 
+--[[
+Uses parenthesis-balancing to parse the macro arguments.
+
+args:
+	paramStr = macro arg, of '(' + comma-sep args + ')'
+	vparams = list of macro params: {'a', 'b', 'c'} etc, found in macros[name].params
+
+returns:
+	map from vparams' strings as keys to values found in paramStr
+	with maybe an extra '...' key to any varargs
+--]]
+function Preproc:parseMacroArgs(paramStr, vparams)
+--DEBUG:print('Preproc:parseMacroArgs', tolua{paramStr=paramStr, vparams=vparams})
+
+	local paramIndex = 0
+	local paramMap = {}
+	if not paramStr:match'^%s*$' then
+		local parcount = 0
+		local last = 1
+		local i = 1
+		while i <= #paramStr do
+			local ch = paramStr:sub(i,i)
+			if ch == '(' then
+				parcount = parcount + 1
+			elseif ch == ')' then
+				parcount = parcount - 1
+			elseif ch == '"' then
+				-- skip to the end of the quote
+				i = i + 1
+				while paramStr:sub(i,i) ~= '"' do
+					if paramStr:sub(i,i) == '\\' then
+						i = i + 1
+					end
+					i = i + 1
+				end
+			elseif ch == ',' then
+				if parcount == 0 then
+					local paramvalue = paramStr:sub(last, i-1)
+					paramIndex = paramIndex + 1
+
+					if #vparams == 1 and vparams[1] == '...' then
+						-- varargs ... use ... indexes?  numbers?  strings?
+						paramMap[paramIndex] = paramvalue
+					else
+						if not vparams[paramIndex] then
+							error('failed to find paramIndex '..tostring(paramIndex)..'\n'
+								..' vparams='..require'ext.tolua'(vparams)..'\n'	-- macro arguments
+								--..' paramStr='..tostring(paramStr)..'\n'
+								..' paramvalue='..tostring(paramvalue)..'\n'
+								..' l='..tostring(l)..'\n'	-- line we are replacing
+								..' paramMap='..tolua(paramMap)..'\n'
+							)
+						end
+						paramMap[vparams[paramIndex]] = paramvalue
+					end
+					last = i + 1
+				end
+			end
+			i = i + 1
+		end
+		assert.eq(parcount, 0, "macro mismatched ()'s")
+		local paramvalue = paramStr:sub(last)
+		paramIndex = paramIndex + 1
+
+		if #vparams == 1 and vparams[1] == '...' then
+			-- varargs
+			paramMap[paramIndex] = paramvalue
+		else
+			local macrokey = vparams[paramIndex]
+			if not macrokey then
+				error("failed to find index "..tolua(paramIndex).." of vparams "..tolua(vparams))
+			end
+--DEBUG(Preproc:parseMacroArgs): print('substituting the '..paramIndex..'th macro from key '..tostring(macrokey)..' to value '..paramvalue)
+			paramMap[macrokey] = paramvalue
+		end
+	end
+
+	-- if we were vararg matching this whole time ... should I replace it with a single-arg and concat the values?
+	if #vparams == 1 and vparams[1] == '...' then
+		paramMap = {['...'] = table.mapi(paramMap, function(v) return tostring(v) end):concat', '}
+	else
+		assert.eq(paramIndex, #vparams, "expanding macro, expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
+	end
+
+print('Preproc:parseMacroArgs got', tolua(paramMap))
+	return paramMap
+end
+
 -- try to evaluate the token at the top
 -- like level13, but unlike it this doesn't fail if it can't evaluate it
 function Preproc:tryToEval(r)
@@ -608,35 +696,38 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 -- stack: {..., next}
 			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
 			-- otherwise I can just () balance regex and then insert it all into the current reader
-			local par, rest
+			local paramStr, rest
 			rest = string.trim(r:whatsLeft())
-			par, rest = rest:match'^(%b())%s*(.*)$'
-
-			-- now we have to count () balance ourselves to find our where the right commas go ...
-			assert(par, "macro expected arguments")
-
-			-- TODO ()-balancing and comma-separation for the arguments ...
-			local macroValues
-
-
-			-- this is old API
-			-- does it work with multiline applications?
-			-- TODO rewrite it to expect the key to come first
-			--self:handleMacroWithArgs(prev..rest, k, v.params)
-error'here'
-
-			-- is this a bad idea?  I'm just gonna push/pop the macro stack with our args
-			local pushMacros = self.macros
-			self.macros = table(self.macros):setmetatable(nil)
-			for i,arg in ipairs(v.params) do
-				self.macros[arg] = macroValues[i]
-			end
-
 			r:removeStack(-1)
 -- stack: {...}
+			paramStr, rest = rest:match'^(%b())%s*(.*)$'
+
+			-- now we have to count () balance ourselves to find our where the right commas go ...
+			assert(paramStr, "macro expected arguments")
+
+			-- TODO ()-balancing and comma-separation for the arguments in 'paramStr' ...
+			paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
+
+-- then use those for values associatd with variables in `v.params`
+			local paramMap = self:parseMacroArgs(paramStr, v.params)
+-- then replace all occurrences of those variables found within the stack of `v.def`
+-- then copy that stack onto the top, underneath the current next-token.
+
+			local eval = table()
+			for _,e in ipairs(v.def) do
+				eval:insert(e.space)
+				local replArg = paramMap[e.token]
+				if replArg then
+					eval:insert(replArg)
+				else
+					eval:insert(e.token)
+				end
+			end
+			eval = eval:concat()
+--DEBUG:print('evalated to', eval)
 
 			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-			r:setData('('..v.def..')'..rest)
+			r:setData(eval..rest)
 -- stack: {..., next}
 
 			-- when inserting macros, what level do I start at?
@@ -644,13 +735,10 @@ error'here'
 			self:level13(r)
 -- stack: {..., result, next}
 
-			-- ... and restore after we've evaluated ... .... how much ... ?
-			self.macros = pushMacros
-
 		elseif type(v) == 'nil' then
 			-- any unknown/remaining macro variable is going to evaluate to 0
 
-			if self.evalLeaveNames then
+			if self.evalLeaveUndefinedNames then
 				-- if we're not in a macro-eval then leave it as is
 -- stack: {..., name, next}
 			else
@@ -1132,23 +1220,52 @@ end
 							and r.stack[-2].space == ''
 							then
 -- stack: {'(', next}
+								assert.eq(r:removeStack(-2).token, '(')
+-- stack: {next}
 								-- params
 								local params = table()
 								local first = true
 								while not r:canbe')' do
 									if not first then
+-- stack: {',', next}
 										r:mustbe','
+-- stack: {next}
+										assert.eq(r:removeStack(-2).token, ',')
 									end
 									first = false
-									params:insert(r:canbe'...' or r:mustbetype'name')
+									local argname = r:canbe'...' or r:mustbetype'name'
+-- stack: {argname, next}
+									params:insert(argname)
+-- stack: {next}
+									assert.eq(r:removeStack(-2).token, argname)
 								end
--- stack: {'(', ..., ')', next}
-								local paramdef = r:whatsLeft()
---DEBUG:print('defining macro '..tolua(k)..' with params='..tolua(params)..', def='..tolua(paramdef))
+-- stack: {')', next}
+								assert.eq(r:removeStack(-2).token, ')')
+-- stack: {next}
+assert.len(r.stack, 1)			
+								-- now parse all of the rest of the line and save it for later
+								while not r:canbetype'done' do
+									r:next()
+								end
+
+								-- now save it
+								local def = table()
+								local n = #r.stack-1
+								table.move(r.stack, 1, n, 1, def)
+assert.len(def, n)
+								for i=1,n do
+									r.stack[i] = nil
+								end
+								r.stack[1] = r.stack[n+1]
+								r.stack[n+1] = nil
+assert.len(r.stack, 1)
+assert.eq(r.stack[1].type, 'done')
+								
+--DEBUG:print('defining macro '..tolua(k)..' with params='..tolua(params)..', def='..tolua(def))
 								-- by default returns '' to replace the line with empty
 								lines[i] = self:getDefineCode(k, {
 									params = params,
-									def = paramdef,	-- This is rest of the line to be parsed:
+									def = def,	-- This is rest of the line to be parsed:
 								}, l)
 							else
 
@@ -1435,9 +1552,9 @@ print(('+'):rep(#self.includeStack+1)..' #include '..fn)
 -- {..., last token consumed that isn't done, next}
 
 							-- see if we can expand it to a token ...
-							self.evalLeaveNames = true	-- TODO or just pass a flag through the 'eval' levels
+							self.evalLeaveUndefinedNames = true	-- TODO or just pass a flag through the 'eval' levels
 							self:tryToEval(r)
-							self.evalLeaveNames = nil
+							self.evalLeaveUndefinedNames = nil
 
 							-- try to expand stack[-1]
 							-- i.e. try to apply level13 of the expr evaluator

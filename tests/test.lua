@@ -35,7 +35,9 @@ local result = p[[
 ]]
 
 local Z = p.macros.Z
-assert.eq(Z.def, 'a + b * c')
+assert.len(Z.def, 5)
+assert.tableieq(Z.def:mapi(function(e) return e.token end), {'a', '+', 'b', '*', 'c'})
+assert.tableieq(Z.def:mapi(function(e) return e.type end), {'name', 'symbol', 'name', 'symbol', 'name'})
 assert.tableieq(Z.params, {'a', 'b', 'c'})
 --[=[
 

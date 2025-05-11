@@ -165,15 +165,15 @@ function Reader:setData(data)
 end
 
 function Reader:next()
---DEBUG(Reader:next):print'Reader:next()'
+--DEBUG:print'Reader:next()'
 	if self.index > #self.data then
 		if #self.stack == 0
 		or self.stack:last().type ~= 'done'
 		then
---DEBUG(Reader:next):print'...inserting type=done'
+--DEBUG:print'Reader:next ...inserting type=done'
 			self.stack:insert{token='', type='done', space=''}
 		end
---DEBUG(Reader:next):print'...done'
+--DEBUG:print'Reader:next ...done'
 		return '', 'done', ''
 	end
 
@@ -187,7 +187,7 @@ if not ti1 then error("failed to match at "..self.data:sub(self.index, self.inde
 	local token = self.data:sub(ti1, ti2)
 	self.index = ti2 + 1
 	self.stack:insert{token=token, type=tokentype, space=space}
---DEBUG(Reader:next):print('...next got', tolua{token=token, type=tokentype, space=space})
+--DEBUG:print('Reader:next ...next got', tolua{token=token, type=tokentype, space=space})
 	return token, tokentype, space
 end
 
@@ -204,15 +204,23 @@ function Reader:mustbe(token)
 end
 
 function Reader:canbetype(tokentype)
+--DEBUG:print('Reader:canbetype', self, tokentype)
+--DEBUG:print('Reader:canbetype self.stack', self.stack)
 	local last = self.stack:last()
+--DEBUG:print('Reader:canbetype last', last)
 	if tokentype == last.type then
 		self:next()
+--DEBUG:print('Reader:canbetype returning', last.token)
 		return last.token
 	end
 end
 
 function Reader:mustbetype(tokentype)
-	return assert(self:canbetype(tokentype))
+--DEBUG:print('Reader:mustbetype', self, tokentype)
+	local result = self:canbetype(tokentype)
+		or error("expected token type "..tolua(tokentype).." but found "..tolua(self.stack:last()))
+--DEBUG:print('Reader:mustbetype got', result)
+	return result
 end
 
 -- concats the currently-unprocessed top-of-stack with the rest of the data
@@ -587,7 +595,7 @@ function Preproc:parseMacroArgs(paramStr, vparams)
 		assert.eq(paramIndex, #vparams, "expanding macro, expected "..#vparams.." "..tolua(vparams).." params but found "..paramIndex..": "..tolua(paramMap))
 	end
 
-print('Preproc:parseMacroArgs got', tolua(paramMap))
+--DEBUG:print('Preproc:parseMacroArgs got', tolua(paramMap))
 	return paramMap
 end
 
@@ -598,8 +606,147 @@ function Preproc:tryToEval(r)
 local top = #r.stack
 local rest = r:whatsLeft()
 
+	if r:canbetype'name' then
+-- stack: {..., name, next}
+		local k = r.stack[-2].token
+		local v = self.macros[k]
+--DEBUG:print('...handling named macro: '..tolua(k)..' = '..tolua(v))
+
+		if type(v) == 'string' then
+			assert.eq(r:removeStack(-2).token, k)
+-- stack: {..., next}
+			-- then we need to wedge our string into the to-be-parsed content ...
+			-- throw out the old altogether?
+			local rest = r:whatsLeft()
+			r:removeStack(-1)
+-- stack: {...}
+			r:setData(v..rest)
+-- stack: {..., next}
+
+			if not self.evaluatingPlainCode then
+				self:level1(r)	-- when inserting macros, what level do I start at?
+			else
+				-- TODO
+				-- levelX() wants one new thing on the stack
+				-- and the stack assertion is at the end of this function
+				-- but
+				-- this is also called from evaluatingPlainCode's tryToEval()
+				-- and in that case we don't care
+				-- but for consistency,
+				-- here's an empty string
+				--r:insertStack(-1, '')
+				-- ... tokentype classifier will complain so ...
+				r.stack:insert(#r.stack, {
+					token='',
+					type='space',
+					space='',
+				})
+			end
+-- stack: {..., result, next}
+
+		elseif type(v) == 'table' then
+			assert.eq(r:removeStack(-2).token, k)
+-- stack: {..., next}
+			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
+			-- otherwise I can just () balance regex and then insert it all into the current reader
+			local paramStr, rest
+			rest = string.trim(r:whatsLeft())
+			r:removeStack(-1)
+-- stack: {...}
+			paramStr, rest = rest:match'^(%b())%s*(.*)$'
+
+			-- now we have to count () balance ourselves to find our where the right commas go ...
+			assert(paramStr, "macro expected arguments")
+
+			-- TODO ()-balancing and comma-separation for the arguments in 'paramStr' ...
+			paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
+
+-- then use those for values associatd with variables in `v.params`
+			local paramMap = self:parseMacroArgs(paramStr, v.params)
+-- then replace all occurrences of those variables found within the stack of `v.def`
+-- then copy that stack onto the top, underneath the current next-token.
+
+			local eval = table()
+			for _,e in ipairs(v.def) do
+				eval:insert(e.space)
+				local replArg = paramMap[e.token]
+				if replArg then
+					eval:insert(replArg)
+				else
+					eval:insert(e.token)
+				end
+			end
+			eval = eval:concat()
+--DEBUG:print('evalated to', eval)
+
+			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
+			r:setData(eval..rest)
+-- stack: {..., next}
+
+			-- when inserting macros, what level do I start at?
+			-- to handle scope, lets wrap in ( ) and use level13's ( ) evaluation
+			if not self.evaluatingPlainCode then
+				self:level1(r)
+			else
+				-- same argument as above
+				--r:insertStack(-1, '')
+				-- ... tokentype classifier will complain so ...
+				r.stack:insert(#r.stack, {
+					token='',
+					type='space',
+					space='',
+				})
+			end
+-- stack: {..., result, next}
+
+		elseif type(v) == 'nil' then
+			-- any unknown/remaining macro variable is going to evaluate to 0
+
+			if self.evaluatingPlainCode then
+				-- if we're not in a macro-eval then leave it as is
+-- stack: {..., name, next}
+			else
+				-- if we're in a macro-eval then replace with a 0
+				r:replaceStack(-2, -2, '0')
+-- stack: {..., "0", next}
+			end
+		end
+	else
+--DEBUG:print("...couldn't handle "..tolua(rest))
+--DEBUG:print("The stack better not have changed.")
+assert.len(r.stack, top)
+		return false
+	end
+--DEBUG:print("...handled, so the stack better be +1")
+assert.len(r.stack, top+1)
+	return true
+end
+
+function Preproc:level13(r)
+local top = #r.stack
+local rest = r:whatsLeft()
+
+	if r:canbetype'number' then
+		local prev = r.stack[-2].token
+
+-- stack: {prev, next}
+
+		-- remove L/U suffix:
+		local val = assert(cLiteralIntegerToNumber(prev), "expected number")	-- decimal number
+
+		-- put it back
+		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
+		r:replaceStack(-2, -2, tostring(val))
+	elseif r:canbe'(' then
+		self:level1(r)
+		r:mustbe')'
+-- stack: {'(', prev, ')', next}
+		r:removeStack(-4)
+		r:removeStack(-2)
+-- stack: {prev, next}
+
 	-- what does this even do?
-	if r:canbe'_Pragma' then
+	elseif r:canbe'_Pragma' then
 --DEBUG:print'...handling _Pragma'
 -- stack: {..., "_Pragma", next)
 assert.eq(r:removeStack(-2).token, '_Pragma')
@@ -671,161 +818,30 @@ assert(prev == '__has_include' or prev == '__has_include_next')
 		assert.eq(r:removeStack(-2).token, '(')
 -- stack: {..., repl, next}
 
-	elseif r:canbetype'name' then
--- stack: {..., name, next}
-		local k = r.stack[-2].token
-		local v = self.macros[k]
---DEBUG:print('...handling named macro: '..tolua(k)..' = '..tolua(v))
-
-		if type(v) == 'string' then
-			assert.eq(r:removeStack(-2).token, k)
--- stack: {..., next}
-			-- then we need to wedge our string into the to-be-parsed content ...
-			-- throw out the old altogether?
-			local rest = r:whatsLeft()
-			r:removeStack(-1)
--- stack: {...}
-			r:setData(v..rest)
--- stack: {..., next}
-
-			if not self.evaluatingPlainCode then
-				self:level1(r)	-- when inserting macros, what level do I start at?
-			else
-				-- TODO
-				-- levelX() wants one new thing on the stack
-				-- and the stack assertion is at the end of this function
-				-- but 
-				-- this is also called from evaluatingPlainCode's tryToEval()
-				-- and in that case we don't care 
-				-- but for consistency, 
-				-- here's an empty string
-				--r:insertStack(-1, '')
-				-- ... tokentype classifier will complain so ...
-				r.stack:insert(#r.stack, {
-					token='',
-					type='space',
-					space='',
-				})			
-			end
--- stack: {..., result, next}
-
-		elseif type(v) == 'table' then
-			assert.eq(r:removeStack(-2).token, k)
--- stack: {..., next}
-			-- if I try to separately parse further then I have to parse whtas inside the macro args, which would involve () balancing, and only for the sake of () balancing
-			-- otherwise I can just () balance regex and then insert it all into the current reader
-			local paramStr, rest
-			rest = string.trim(r:whatsLeft())
-			r:removeStack(-1)
--- stack: {...}
-			paramStr, rest = rest:match'^(%b())%s*(.*)$'
-
-			-- now we have to count () balance ourselves to find our where the right commas go ...
-			assert(paramStr, "macro expected arguments")
-
-			-- TODO ()-balancing and comma-separation for the arguments in 'paramStr' ...
-			paramStr = paramStr:sub(2,-2)	-- strip outer ()'s
-
--- then use those for values associatd with variables in `v.params`
-			local paramMap = self:parseMacroArgs(paramStr, v.params)
--- then replace all occurrences of those variables found within the stack of `v.def`
--- then copy that stack onto the top, underneath the current next-token.
-
-			local eval = table()
-			for _,e in ipairs(v.def) do
-				eval:insert(e.space)
-				local replArg = paramMap[e.token]
-				if replArg then
-					eval:insert(replArg)
-				else
-					eval:insert(e.token)
-				end
-			end
-			eval = eval:concat()
---DEBUG:print('evalated to', eval)
-
-			-- then we need to wedge our def into the to-be-parsed content with macro args replaced ...
-			r:setData(eval..rest)
--- stack: {..., next}
-
-			-- when inserting macros, what level do I start at?
-			-- to handle scope, lets wrap in ( ) and use level13's ( ) evaluation
-			if not self.evaluatingPlainCode then
-				self:level1(r)
-			else
-				-- same argument as above
-				--r:insertStack(-1, '') 
-				-- ... tokentype classifier will complain so ...
-				r.stack:insert(#r.stack, {
-					token='',
-					type='space',
-					space='',
-				})
-			end
--- stack: {..., result, next}
-
-		elseif type(v) == 'nil' then
-			-- any unknown/remaining macro variable is going to evaluate to 0
-
-			if self.evaluatingPlainCode then
-				-- if we're not in a macro-eval then leave it as is
--- stack: {..., name, next}
-			else
-				-- if we're in a macro-eval then replace with a 0
-				r:replaceStack(-2, -2, '0')
--- stack: {..., "0", next}
-			end
-		end
-	else
---DEBUG:print("...couldn't handle "..tolua(rest))
---DEBUG:print("The stack better not have changed.")
-assert.len(r.stack, top)
-		return false
-	end
---DEBUG:print("...handled, so the stack better be +1")
-assert.len(r.stack, top+1)
-	return true
-end
-
-function Preproc:level13(r)
-local top = #r.stack
-local rest = r:whatsLeft()
-
-	if self:tryToEval(r) then
-		-- handled
-	elseif r:canbetype'number' then
-		local prev = r.stack[-2].token
-
--- stack is {prev, next}
-
-		-- remove L/U suffix:
-		local val = assert(cLiteralIntegerToNumber(prev), "expected number")	-- decimal number
-
-		-- put it back
-		-- or better would be (TODO) just operate on 64bit ints or whatever preprocessor spec says it handles
-		r:replaceStack(-2, -2, tostring(val))
-	elseif r:canbe'(' then
-		local node = self:level1(r)
-		r:mustbe')'
--- stack is {'(', prev, ')', next}
-		r:removeStack(-4)
-		r:removeStack(-2)
--- stack is {prev, next}
 	elseif r:canbe'defined' then
+-- stack: {'defined', next}
+		assert.eq(r:removeStack(-2).token, 'defined')
+-- stack: {next}
 		local par = r:canbe'('
--- stack is {'(', next}
-		r:removeStack(-2)
--- stack is {next}
-		r:mustbetype'name'
+-- stack: {'(', next}
+		assert.eq(r:removeStack(-2).token, '(')
+-- stack: {next}
+		local name = r:mustbetype'name'
+--DEBUG:print('evaluating defined('..tolua(name)..')')
 		if par then
 			r:mustbe')'
--- stack is {name, ')', next}
-			r:removeStack(-2)
+-- stack: {name, ')', next}
+			assert.eq(r:removeStack(-2).token, ')')
+-- stack: {name, next}
 		end
--- stack is {name, next}
+-- stack: {name, next}
+		assert.eq(r.stack[-2].token, name)
 		r:replaceStack(-2, -2, tostring(castnumber(self.macros[name])))
 	else
-		error("failed to parse expression: "..rest)
+		-- do 'tryToEval' last to catch all other names we didn't just handle above
+		if not self:tryToEval(r) then
+			error("failed to parse expression: "..rest)
+		end
 	end
 assert.len(r.stack, top+1)
 end
@@ -840,7 +856,7 @@ local top = #r.stack
 	then
 		self:level13(r)
 		local op = r.stack[-3].token
--- stack is {'+'|'-'|'!'|'~', a, next}
+-- stack: {'+'|'-'|'!'|'~', a, next}
 assert.ge(#r.stack, 3)
 assert(op == '+' or op == '-' or op == '!' or op == '~')
 
@@ -870,7 +886,7 @@ local top = #r.stack
 	if r:canbe'*' or r:canbe'/' or r:canbe'%' then
 		self:level11(r)
 		local op = r.stack[-3].token
--- stack is {a, '*'|'/'|'%', b, next}
+-- stack: {a, '*'|'/'|'%', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '*' or op == '/' or op == '%')
 		local a = castnumber(r.stack[-4].token)
@@ -896,7 +912,7 @@ local top = #r.stack
 	if r:canbe'+' or r:canbe'-' then
 		self:level10(r)
 		local op = r.stack[-3].token
--- stack is {a, '+'|'-', b, next}
+-- stack: {a, '+'|'-', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '+' or op == '-')
 		local a = castnumber(r.stack[-4].token)
@@ -920,7 +936,7 @@ local top = #r.stack
 	if r:canbe'>>' or r:canbe'<<' then
 		self:level9(r)
 		local op = r.stack[-3].token
--- stack is {a, '>>'|'<<', b, next}
+-- stack: {a, '>>'|'<<', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '>>' or op == '<<')
 		local a = castnumber(r.stack[-4].token)
@@ -948,7 +964,7 @@ local top = #r.stack
 	then
 		self:level8(r)
 		local op = r.stack[-3].token
--- stack is {a, '>='|'<='|'>'|'<', b, next}
+-- stack: {a, '>='|'<='|'>'|'<', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '>=' or op == '<=' or op == '>' or op == '<')
 		local a = castnumber(r.stack[-4].token)
@@ -976,7 +992,7 @@ local top = #r.stack
 	if r:canbe'==' or r:canbe'!=' then
 		self:level7(r)
 		local op = r.stack[-3].token
--- stack is {a, '=='|'!=', b, next}
+-- stack: {a, '=='|'!=', b, next}
 assert.ge(#r.stack, 4)
 assert(op == '==' or op == '!=')
 		local a = castnumber(r.stack[-4].token)
@@ -995,7 +1011,7 @@ local top = #r.stack
 	self:level7(r)
 	if r:canbe'&' then
 		self:level6(r)
--- stack is {a, '&', b, next}
+-- stack: {a, '&', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '&')
 		r:replaceStack(-4, -2, tostring(
@@ -1010,10 +1026,10 @@ end
 
 function Preproc:level5(r)
 local top = #r.stack
-	local a = self:level6(r)
+	self:level6(r)
 	if r:canbe'^' then
 		self:level5(r)
--- stack is {a, '^', b, next}
+-- stack: {a, '^', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '^')
 		r:replaceStack(-4, -2, tostring(
@@ -1031,7 +1047,7 @@ local top = #r.stack
 	self:level5(r)
 	if r:canbe'|' then
 		self:level4(r)
--- stack is {a, '|', b, next}
+-- stack: {a, '|', b, next}
 assert.ge(#r.stack, 4)
 assert.eq(r.stack[-3].token, '|')
 		r:replaceStack(-4, -2, tostring(
@@ -1094,22 +1110,23 @@ end
 
 function Preproc:parseCondInt(r)
 	assert(r)
---DEBUG:print('evaluating condition:', r)
+-- stack: {next}
+assert.len(r.stack, 1)
 	-- ok so Windows gl.h will have in their macro if statements `MACRO && stmt` where MACRO is #define'd to be an empty string
 	-- so if we replace macros here then ... we get parse errors on the #if evaluation
 	-- Windows ... smh
---DEBUG:print('after macros:', r)
 
-	local parse = self:level1(r)
+	self:level1(r)
 
---DEBUG:print('got expression tree', tolua(parse))
--- stack should be: {'#', 'if'/'elif', cond, next}
-assert.len(#r.stack, 4)
+-- stack: {cond, next}
+print('stack', tolua(r.stack))
+assert.len(r.stack, 2)
 	r:mustbetype'done'
-	local cond = castnumber(r.stack[-2].token)
 
+	local cond = castnumber(r.stack[1].token)
 --DEBUG:print('got cond', cond)
-
+	r.stack:remove(1)
+-- stack: {next}
 	return cond
 end
 
@@ -1271,7 +1288,7 @@ end
 -- stack: {')', next}
 								assert.eq(r:removeStack(-2).token, ')')
 -- stack: {next}
-assert.len(r.stack, 1)			
+assert.len(r.stack, 1)
 								-- now parse all of the rest of the line and save it for later
 								while not r:canbetype'done' do
 									r:next()
@@ -1282,14 +1299,14 @@ assert.len(r.stack, 1)
 								local n = #r.stack-1
 								table.move(r.stack, 1, n, 1, def)
 assert.len(def, n)
-								for i=1,n do
+assert.len(r.stack, n+1)
+								r.stack[1] = r.stack[n+1]
+								for i=2,n+1 do
 									r.stack[i] = nil
 								end
-								r.stack[1] = r.stack[n+1]
-								r.stack[n+1] = nil
 assert.len(r.stack, 1)
 assert.eq(r.stack[1].type, 'done')
-								
+
 --DEBUG:print('defining macro '..tolua(k)..' with params='..tolua(params)..', def='..tolua(def))
 								-- by default returns '' to replace the line with empty
 								lines[i] = self:getDefineCode(k, {
@@ -1302,7 +1319,7 @@ assert.eq(r.stack[1].type, 'done')
 								local v = (par and '(' or '')..r:whatsLeft()
 								v = string.trim(v)
 								-- replace
-								lines[i] = self:getDefineCode(k, v)
+								lines[i] = self:getDefineCode(k, v, l)
 							end
 						else
 							lines:remove(i)
@@ -1311,6 +1328,7 @@ assert.eq(r.stack[1].type, 'done')
 					elseif cmd == 'if'
 					or cmd == 'elif'
 					then
+-- stack: {next}
 --DEBUG:print('if/elif with eval', eval, 'preveval', preveval)
 						local hasprocessed = false
 						if cmd == 'elif' then
@@ -1340,7 +1358,9 @@ assert.eq(r.stack[1].type, 'done')
 --DEBUG:print('elif skipping cond evaluation')
 								cond = false
 							else
+assert.len(r.stack, 1)
 								cond = self:parseCondInt(r) ~= 0
+assert.len(r.stack, 1)
 								assert(cond ~= nil, "cond must be true or false")
 							end
 						end
@@ -1349,7 +1369,6 @@ assert.eq(r.stack[1].type, 'done')
 
 						lines:remove(i)
 						i = i - 1
-
 
 					elseif cmd == 'else' then
 						assert.gt(#ifstack, 0, "found an #else without an #if")

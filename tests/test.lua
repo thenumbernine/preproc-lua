@@ -61,4 +61,13 @@ int main() {
 	printf("Y = %d\n", Y(1));		// replaced with ((1)+1)
 }
 ]]
-print(results)
+assert.eq(results, [[
+int main() { printf("X = %d\n",(1));
+printf("Y = %d\n", ((1)+1));
+}]])
+
+p = Preproc()
+p[[
+#if defined (WIN32)
+#endif
+]]
